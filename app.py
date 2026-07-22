@@ -176,7 +176,7 @@ BRANCHES_LIST = [
 ]
 
 PROGRAMS_INFO = {
-    'robossteam': {
+    'robosteam': {
         'name': '🤖 РобоSTEAM (3-4 года)',
         'age': '3-4 года',
         'price': '300 руб./занятие',
@@ -658,7 +658,7 @@ def get_contacts_menu():
 def get_benefits_menu():
     """Преимущества с вариациями"""
     variants = [
-        """⭐ ПОЧЕМУ РОДИТЕЛИ ВЫБИРАЮТ ROBOSSTEAMUL:
+        """⭐ ПОЧЕМУ РОДИТЕЛИ ВЫБИРАЮТ ROBOSTEAMUL:
 
 ✅ КАЧЕСТВО ОБРАЗОВАНИЯ:
    • 10+ лет опыта в детском развитии
@@ -695,7 +695,7 @@ def get_benefits_menu():
    ✨ Первое занятие совершенно бесплатно
    ✨ Без обязательств и контрактов""",
 
-        """🌟 ПОЧЕМУ ДЕТИ ОБОЖАЮТ ROBOSSTEAMUL:
+        """🌟 ПОЧЕМУ ДЕТИ ОБОЖАЮТ ROBOSTEAMUL:
 
 Наша компания помогает раскрыть потенциал вашего ребенка:
 
@@ -851,7 +851,7 @@ def handle_message(text, user_id):
             else:
                 return "❓ Вы не зарегистрированы как сотрудник.\n\nЕсли вы сотрудник, свяжитесь с руководством."
         
-        if text_lower in ['привет', 'hi', 'hello', 'привет!', 'хай', 'привет']:
+        if text_lower in ['привет', 'hi', 'hello', 'привет!', 'хай']:
             return get_greeting()
         
         elif text_lower in ['программы', 'programs', 'курсы', 'обучение']:
@@ -886,7 +886,8 @@ def handle_message(text, user_id):
 
 💡 Чем раньше запишетесь, тем больше сэкономите!
 
-☎️ Позвоните прямо сейчас:"""+ get_contacts_menu()
+☎️ Позвоните прямо сейчас:
+""" + get_contacts_menu()
         
         elif text_lower in ['первое занятие', 'бесплатное', 'пробное']:
             return """🎉 ПЕРВОЕ ЗАНЯТИЕ БЕСПЛАТНО!
@@ -924,7 +925,7 @@ def handle_message(text, user_id):
                     return response
                 else:
                     return f"❌ Номер филиала неверный. Укажите от 1 до {len(BRANCHES_LIST)}"
-            except:
+            except Exception:
                 pass
         
         elif any(kw in text_lower for kw in ['доу', 'гимназия', 'школа']):
@@ -1057,7 +1058,7 @@ def admin_add_employee():
 
 @app.errorhandler(404)
 def not_found(error):
-    logger.warning(f"⚠️ 404 Not Found")
+    logger.warning("⚠️ 404 Not Found")
     return jsonify({'error': 'Endpoint not found'}), 404
 
 @app.errorhandler(500)
