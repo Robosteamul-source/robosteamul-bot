@@ -1,11 +1,10 @@
-
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
 """
 🤖 RoboSTEAMuL VK Bot - Premium Version 2.0
 Автор: RoboSTEAMuL
-Версия: 2.0
+Версия: 2.0 FIXED
 Описание: Премиум бот для Робостим с интерактивным меню и предложением сотрудничества
 """
 
@@ -30,15 +29,7 @@ API_VERSION = os.getenv('API_VERSION', '5.131')
 VK_SECRET_KEY = os.getenv('VK_SECRET_KEY', '')
 VK_CONFIRMATION_CODE = os.getenv('VK_CONFIRMATION_CODE', '')
 
-# ===== ПРОВЕРКА ПЕРЕМЕННЫХ =====
-if not VK_TOKEN or not GROUP_ID:
-    logger.error("❌ VK_TOKEN или GROUP_ID не установлены!")
-    raise ValueError("VK_TOKEN и GROUP_ID обязательны")
-
-logger.info("✅ VK_TOKEN загружен")
-logger.info(f"✅ GROUP_ID: {GROUP_ID}")
-
-# ===== ПРОВЕРКА ПЕРЕМЕННЫХ =====
+# ===== ПРОВЕРКА ПЕРЕМЕННЫХ (БЕЗ ДУБЛИРОВАНИЯ) =====
 if not VK_TOKEN or not GROUP_ID:
     logger.error("❌ VK_TOKEN или GROUP_ID не установлены!")
     raise ValueError("VK_TOKEN и GROUP_ID обязательны")
@@ -48,6 +39,19 @@ logger.info(f"✅ GROUP_ID: {GROUP_ID}")
 
 # ===== ИНИЦИАЛИЗАЦИЯ FLASK =====
 app = Flask(__name__)
+
+# ===== ЗАЩИТА ОТ ДУБЛИРОВАНИЯ СООБЩЕНИЙ =====
+processed_messages = set()
+
+def is_message_processed(message_id):
+    """Проверить, обработано ли сообщение"""
+    if message_id in processed_messages:
+        return True
+    processed_messages.add(message_id)
+    # Оставляем последние 1000 сообщений в памяти
+    if len(processed_messages) > 1000:
+        processed_messages.pop()
+    return False
 
 # ===== ИНИЦИАЛИЗАЦИЯ VK API =====
 vk = None
@@ -60,7 +64,7 @@ except Exception as e:
 
 # ===== БОТ ИНФОРМАЦИЯ =====
 BOT_NAME = "RoboSTEAMuL Консультант"
-BOT_VERSION = "2.0 Premium"
+BOT_VERSION = "2.0 Fixed"
 BOT_AUTHOR = "RoboSTEAMuL"
 SCHOOL_WEBSITE = "www.robostem.ru"
 SCHOOL_PHONE = "+7 (XXX) XXX-XXXX"
@@ -181,7 +185,7 @@ def send_message(user_id, message):
 # ===== ФУНКЦИИ ОБРАБОТКИ КОМАНД =====
 
 def get_greeting():
-    """Приветствие"""
+    """Приветствие с предложением меню"""
     hour = datetime.now().hour
     if hour < 12:
         greeting = "☀️ Доброе утро!"
@@ -196,13 +200,20 @@ def get_greeting():
 
 Я ваш персональный консультант по образовательным программам для детей.
 
-Напишите:
+📍 Что дальше? Выберите из меню:
+
+🏫 ФИЛИАЛЫ И ПРОГРАММЫ:
+• филиалы - выбрать детский сад
 • программы - список всех курсов
-• филиалы - интерактивное меню выбора детского сада
-• программа [название] - подробная информация
+
+💰 ИНФОРМАЦИЯ:
 • цены - стоимость обучения
-• контакты - как записаться
 • преимущества - почему выбирают нас
+
+📞 ЗАПИСЬ:
+• контакты - как записаться
+
+❓ ПОМОЩЬ:
 • помощь - все команды"""
 
 def get_branches_menu():
@@ -249,36 +260,6 @@ def get_cooperation_offer():
 🎁 ЧТО ПОЛУЧАЕТ ВАШ РЕБЁНОК?
 
 ⭐ Бесплатные занятия на всём протяжении обучения в RoboSTEAMuL.
-
-🏫 ЧТО ПОЛУЧАЕТ ДЕТСКИЙ САД ИЛИ ШКОЛА?
-
-✅ Современные занятия по робототехнике, подготовке к школе, хореографии или развитию речи прямо на своей территории.
-
-💙 ЧТО ПОЛУЧАЕТ КОМПАНИЯ ROBOSSTEAMUL?
-
-Возможность подарить ещё большему количеству детей качественное дополнительное образование.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-📩 НАПИШИТЕ НАМ:
-
-Название детского сада или школы
-ФИО руководителя (если знаете)
-Контактный телефон учреждения
-
-Мы самостоятельно проведём переговоры и организуем весь процесс.
-
-💡 Возможно, именно благодаря вам занятия RoboSTEAMuL появятся в вашем детском саду, а ваш ребёнок сможет обучаться бесплатно! 🚀
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-📌 Условия акции: бесплатный абонемент предоставляется после заключения договора между RoboSTEAMuL и образовательным учреждением и фактического открытия группы для занятий.
-
-📞 КОНТАКТЫ:
-☎️ Телефон: {SCHOOL_PHONE}
-📧 Email: {SCHOOL_EMAIL}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 📍 Напишите 'филиалы' для выбора другого детского сада"""
 
@@ -475,7 +456,7 @@ def get_help():
 • преимущества - почему выбирают нас
 
 🤖 ОБЩЕЕ:
-• привет - приветствие
+• привет / добрый день / добрый вечер / здравствуйте - приветствие
 • помощь - эта справка"""
 
 def get_default_response():
@@ -497,7 +478,15 @@ def handle_message(text, user_id):
     
     logger.info(f"📨 Сообщение от {user_id}: '{text}'")
     
-    if text_lower in ['привет', 'hi', 'hello', 'привет!', 'хай']:
+    # ===== РАСШИРЕННАЯ ОБРАБОТКА ПРИВЕТСТВИЙ =====
+    greetings = [
+        'привет', 'привет!', 'hi', 'hello', 'привет!!!',
+        'добрый день', 'добрый вечер', 'доброе утро',
+        'здравствуйте', 'здраствуй', 'здравствуй',
+        'хай', 'хай!', 'hey', 'yo', 'ой'
+    ]
+    
+    if text_lower in greetings:
         return get_greeting()
     elif text_lower in ['программы', 'programs', 'программы!', 'курсы']:
         return get_all_programs()
@@ -568,6 +557,12 @@ def callback():
             message = data.get('object', {}).get('message', {})
             user_id = message.get('from_id')
             text = message.get('text', '')
+            message_id = message.get('id')
+            
+            # ===== ЗАЩИТА ОТ ДУБЛИРОВАНИЯ =====
+            if is_message_processed(message_id):
+                logger.info(f"⚠️ Сообщение {message_id} уже обработано, пропускаю")
+                return jsonify({'ok': True}), 200
             
             if user_id < 0:
                 logger.info("ℹ️ Сообщение от сервиса, игнорируем")
