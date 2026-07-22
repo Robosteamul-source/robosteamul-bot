@@ -8,10 +8,17 @@
 Описание: Премиум бот для Робостим с интерактивным меню и предложением сотрудничества
 """
 
+
+
 import os
-print("=== BOT RESTARTED ===")
-print("Current code version: 2.1")
-print("Working directory:", os.getcwd())
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+logger.info("=== BOT RESTARTED ===")
+logger.info("Current code version: 2.1")
+logger.info("Working directory: %s", os.getcwd())
 
 import logging
 from dotenv import load_dotenv
@@ -19,13 +26,6 @@ from flask import Flask, request, jsonify
 import vk_api
 from vk_api.utils import get_random_id
 from datetime import datetime
-
-# ===== ЛОГИРОВАНИЕ =====
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - [%(levelname)s] - %(message)s'
-)
-logger = logging.getLogger(__name__)
 
 # ===== ЗАГРУЗКА ПЕРЕМЕННЫХ =====
 load_dotenv()
