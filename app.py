@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
@@ -8,8 +9,6 @@
 Описание: Премиум бот для Робостим с интерактивным меню и предложением сотрудничества
 """
 
-
-
 import os
 import logging
 from dotenv import load_dotenv
@@ -18,14 +17,26 @@ import vk_api
 from vk_api.utils import get_random_id
 from datetime import datetime
 
+# ===== ИНИЦИАЛИЗАЦИЯ ЛОГГЕРА =====
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 # ===== ЗАГРУЗКА ПЕРЕМЕННЫХ =====
 load_dotenv()
 
 VK_TOKEN = os.getenv('VK_TOKEN')
 GROUP_ID = os.getenv('GROUP_ID')
 API_VERSION = os.getenv('API_VERSION', '5.131')
-VK_SECRET_KEY = os.getenv('SECRET', '')
-VK_CONFIRMATION_CODE = os.getenv('CONFIRMATION_TOKEN', '')
+VK_SECRET_KEY = os.getenv('VK_SECRET_KEY', '')
+VK_CONFIRMATION_CODE = os.getenv('VK_CONFIRMATION_CODE', '')
+
+# ===== ПРОВЕРКА ПЕРЕМЕННЫХ =====
+if not VK_TOKEN or not GROUP_ID:
+    logger.error("❌ VK_TOKEN или GROUP_ID не установлены!")
+    raise ValueError("VK_TOKEN и GROUP_ID обязательны")
+
+logger.info("✅ VK_TOKEN загружен")
+logger.info(f"✅ GROUP_ID: {GROUP_ID}")
 
 # ===== ПРОВЕРКА ПЕРЕМЕННЫХ =====
 if not VK_TOKEN or not GROUP_ID:
