@@ -3,7 +3,7 @@
 
 """
 🤖 RoboSTEAMuL VK Bot - Простая версия
-Функции: Приветствие, Программы, Филиалы, Цены, Контакты
+Функции: Приветствие, Программы, Филиалы, Цены, Контакты, Запись
 """
 
 import os
@@ -14,6 +14,8 @@ import vk_api
 from vk_api.utils import get_random_id
 from datetime import datetime
 import random
+import sqlite3
+import json
 
 # ===== ЛОГГЕР =====
 logging.basicConfig(level=logging.INFO)
@@ -38,6 +40,43 @@ logger.info(f"✅ GROUP_ID: {GROUP_ID}")
 
 # ===== FLASK =====
 app = Flask(__name__)
+
+# ===== БАЗА ДАННЫХ =====
+REGISTRATIONS_DB = 'registrations.db'
+
+def init_registrations_db():
+    """Инициализировать базу данных для записей"""
+    try:
+        conn = sqlite3.connect(REGISTRATIONS_DB)
+        c = conn.cursor()
+        
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS registrations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                child_name TEXT NOT NULL,
+                child_age INTEGER NOT NULL,
+                program TEXT NOT NULL,
+                branch TEXT NOT NULL,
+                phone TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS user_state (
+                user_id INTEGER PRIMARY KEY,
+                state TEXT DEFAULT 'default',
+                registration_data TEXT,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        conn.commit()
+        conn.close()
+        logger.info("✅ База данных записей инициализирована")
+    except Exception as e:
+        logger.error(f"❌ Ошибка инициализации БД: {e}")
 
 # ===== VK API =====
 vk = None
@@ -339,7 +378,239 @@ def get_contacts():
     
     return contacts_str
 
+# ===== ФУНКЦИИ ЗАПИСИ =====
+
+def get_user_state(user_id):
+    """Получить состояние пользователя"""
+    try:
+        conn = sqlite3.connect(REGISTRATIONS_DB)
+        c = conn.cursor()
+        c.execute('SELECT state, registration_data FROM user_state WHERE user_id = ?', (user_id,))
+        result = c.fetchone()
+        conn.close()
+        
+        if result:
+            state, data = result
+            return state, json.loads(data) if data else {}
+        return 'default', {}
+    except Exception as e:
+        logger.error(f"❌ Ошибка получения состояния: {e}")
+        return 'default', {}
+
+def set_user_state(user_id, state, data=None):
+    """Установить состояние пользователя"""
+    try:
+        conn = sqlite3.connect(REGISTRATIONS_DB)
+        c = conn.cursor()
+        data_json = json.dumps(data) if data else None
+        c.execute('''
+            INSERT OR REPLACE INTO user_state (user_id, state, registration_data)
+            VALUES (?, ?, ?)
+        ''', (user_id, state, data_json))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"❌ Ошибка установки состояния: {e}")
+
+def save_registration(user_id, child_name, child_age, program, branch, phone):
+    """Сохранить запись на занятие"""
+    try:
+        conn = sqlite3.connect(REGISTRATIONS_DB)
+        c = conn.cursor()
+        c.execute('''
+            INSERT INTO registrations (user_id, child_name, child_age, program, branch, phone)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (user_id, child_name, child_age, program, branch, phone))
+        conn.commit()
+        conn.close()
+        logger.info(f"✅ Запись сохранена: {child_name}, {program}, {branch}")
+        return True
+    except Exception as e:
+        logger.error(f"❌ Ошибка сохранения записи: {e}")
+        return False
+
+def start_registration(user_id):
+    """Начать процесс записи"""
+    set_user_state(user_id, 'waiting_name', {})
+    return """📝 ЗАПИСЬ НА ЗАНЯТИЕ
+
+Отлично! Давайте запишем вашего ребенка на занятие! 🎉
+
+Сначала напишите: Как зовут вашего ребенка?
+
+Пример: Маша"""
+
+def handle_registration(user_id, text, state, data):
+    """Обработка процесса записи"""
+    text_lower = text.lower().strip()
+    
+    if state == 'waiting_name':
+        data['child_name'] = text
+        set_user_state(user_id, 'waiting_age', data)
+        return """Спасибо! 😊
+
+Сколько лет вашему ребенку?
+
+Пример: 5"""
+    
+    elif state == 'waiting_age':
+        try:
+            age = int(text_lower)
+            if 3 <= age <= 8:
+                data['child_age'] = age
+                set_user_state(user_id, 'waiting_program', data)
+                
+                programs_list = """Какая программа вас интересует?
+
+Напишите номер:
+1️⃣ РобоSTEAM (3-4 года) - 300 руб.
+2️⃣ РобоSTEAM Брик (5-6 лет) - 300 руб.
+3️⃣ РобоSTEAM Про (6-8 лет) - 400 руб.
+4️⃣ Хореография (3-8 лет) - 350 руб."""
+                
+                return programs_list
+            else:
+                return "❌ Возраст должен быть от 3 до 8 лет.\n\nПопробуйте еще раз:"
+        except:
+            return "❌ Пожалуйста, напишите число (например: 5)"
+    
+    elif state == 'waiting_program':
+        programs_map = {
+            '1': 'РобоSTEAM (3-4 года)',
+            '2': 'РобоSTEAM Брик (5-6 лет)',
+            '3': 'РобоSTEAM Про (6-8 лет)',
+            '4': 'Хореография'
+        }
+        
+        if text_lower in programs_map:
+            data['program'] = programs_map[text_lower]
+            set_user_state(user_id, 'waiting_branch', data)
+            
+            branches_list = """Выберите филиал. Напишите номер (1-26) или название:
+
+1️⃣ ДОУ №30
+2️⃣ ДОУ №30СП
+3️⃣ ДОУ №10 Копейск
+4️⃣ ДОУ №18СП
+5️⃣ ДОУ №24 Копейск
+
+Напишите номер или название филиала:"""
+            
+            return branches_list
+        else:
+            return "❌ Пожалуйста, выберите номер от 1 до 4"
+    
+    elif state == 'waiting_branch':
+        # Поиск филиала по номеру
+        if text_lower.isdigit():
+            try:
+                num = int(text_lower)
+                if 1 <= num <= len(BRANCHES_LIST):
+                    branch = BRANCHES_LIST[num - 1]
+                    data['branch'] = branch['name']
+                    set_user_state(user_id, 'waiting_phone', data)
+                    return f"""Отлично! Вы выбрали: {branch['name']}
+
+Теперь напишите номер телефона родителя:
+
+Пример: +7 (900) 123-45-67"""
+                else:
+                    return f"❌ Номер должен быть от 1 до {len(BRANCHES_LIST)}"
+            except:
+                pass
+        
+        # Поиск по названию
+        for branch in BRANCHES_LIST:
+            if text_lower in branch['name'].lower():
+                data['branch'] = branch['name']
+                set_user_state(user_id, 'waiting_phone', data)
+                return f"""Отлично! Вы выбрали: {branch['name']}
+
+Теперь напишите номер телефона родителя:
+
+Пример: +7 (900) 123-45-67"""
+        
+        return "❌ Филиал не найден. Напишите номер (1-26) или название"
+    
+    elif state == 'waiting_phone':
+        data['phone'] = text
+        
+        # Сохраняем запись
+        if save_registration(
+            user_id,
+            data.get('child_name'),
+            data.get('child_age'),
+            data.get('program'),
+            data.get('branch'),
+            data.get('phone')
+        ):
+            set_user_state(user_id, 'default', {})
+            
+            confirmation = f"""✅ ЗАПИСЬ ПОДТВЕРЖДЕНА!
+
+Спасибо! Вот ваша запись:
+
+📝 Ребенок: {data.get('child_name')}
+🎂 Возраст: {data.get('child_age')} лет
+🎯 Программа: {data.get('program')}
+📍 Филиал: {data.get('branch')}
+📱 Телефон: {data.get('phone')}
+
+🎉 Скоро мы с вами свяжемся!
+
+Спасибо за выбор RoboSTEAMuL! 💪"""
+            
+            return confirmation
+        else:
+            set_user_state(user_id, 'default', {})
+            return "❌ Ошибка при сохранении записи. Пожалуйста, попробуйте позже."
+    
+    return "Что-то пошло не так. Напишите 'записаться' чтобы начать заново."
+
 def handle_message(text, user_id):
+    """Обработка сообщения"""
+    text_lower = text.lower().strip()
+    
+    logger.info(f"📨 Сообщение от {user_id}: '{text}'")
+    
+    # Проверяем состояние пользователя
+    state, data = get_user_state(user_id)
+    
+    # Если пользователь в процессе записи
+    if state != 'default':
+        # Если захотел отменить
+        if text_lower in ['отмена', 'cancel', 'нет']:
+            set_user_state(user_id, 'default', {})
+            return "❌ Запись отменена.\n\nНапишите 'привет' для меню"
+        
+        # Обработать запись
+        return handle_registration(user_id, text, state, data)
+    
+    # Приветствие
+    if text_lower in ['привет', 'hi', 'hello', 'привет!', 'хай', 'начать', 
+                      'добрый день', 'доброе утро', 'добрый вечер', 'добрая ночь',
+                      'здравствуйте', 'здравствуй', 'привет!', 'пока', 'привет привет']:
+        return get_greeting()
+    
+    # Программы
+    elif text_lower in ['программы', 'programs', 'курсы', 'обучение']:
+        return get_programs()
+    
+    # Филиалы
+    elif text_lower in ['филиалы', 'branches', 'где', 'адреса', 'центры']:
+        return get_branches()
+    
+    # Цены
+    elif text_lower in ['цены', 'price', 'стоимость', 'сколько']:
+        return get_prices()
+    
+    # Контакты
+    elif text_lower in ['контакты', 'contacts', 'запись', 'телефон', 'phone']:
+        return get_contacts()
+    
+    # Запись на занятие
+    elif text_lower in ['записаться', 'запись', 'register', 'запись на занятие', 'хочу записаться']:
+        return start_registration(user_id)
     """Обработка сообщения"""
     text_lower = text.lower().strip()
     
@@ -366,7 +637,6 @@ def handle_message(text, user_id):
     # Контакты
     elif text_lower in ['контакты', 'contacts', 'запись', 'телефон', 'phone']:
         return get_contacts()
-    
     # Выбор филиала по номеру
     elif text_lower.isdigit():
         try:
@@ -413,7 +683,8 @@ def handle_message(text, user_id):
 • программы - наши курсы
 • филиалы - где заниматься
 • цены - стоимость
-• контакты - как записаться"""
+• контакты - как записаться
+• записаться - начать запись на занятие"""
 
 # ===== FLASK ROUTES =====
 
@@ -503,6 +774,8 @@ def server_error(error):
 # ===== MAIN =====
 
 if __name__ == '__main__':
+    init_registrations_db()
+    
     port = int(os.getenv('PORT', 8080))
     logger.info(f"🚀 Запуск {BOT_NAME} v{BOT_VERSION}")
     logger.info(f"🔗 http://0.0.0.0:{port}")
