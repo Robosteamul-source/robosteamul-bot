@@ -7,7 +7,11 @@
 Версия: 2.0
 Описание: Премиум бот для Робостим с интерактивным меню и предложением сотрудничества
 """
+import os
 
+print("=== BOT RESTARTED ===")
+print("Current code version:", os.getenv("VERSION", "1.0"))
+print("Working directory:", os.getcwd())
 import os
 import logging
 from dotenv import load_dotenv
