@@ -12,15 +12,6 @@
 
 import os
 import logging
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-logger.info("=== BOT RESTARTED ===")
-logger.info("Current code version: 2.1")
-logger.info("Working directory: %s", os.getcwd())
-
-import logging
 from dotenv import load_dotenv
 from flask import Flask, request, jsonify
 import vk_api
