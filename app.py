@@ -2,8 +2,9 @@
 # -*- coding: utf-8 -*-
 
 """
-🤖 RoboSTEAMuL VK Bot - Улучшенная версия
+🤖 RoboSTEAMuL VK Bot - Улучшенная версия 2.0
 Функции: Приветствие, Программы, Филиалы, Цены, Контакты, Запись
+Бот отвечает только на входящие сообщения (без лишних отправок)
 """
 
 import os
@@ -13,10 +14,8 @@ from flask import Flask, request, jsonify
 import vk_api
 from vk_api.utils import get_random_id
 from datetime import datetime
-import random
 import sqlite3
 import json
-import time
 from difflib import SequenceMatcher
 
 # ===== ЛОГГЕР =====
@@ -91,7 +90,7 @@ except Exception as e:
 
 # ===== БОТ ИНФОРМАЦИЯ =====
 BOT_NAME = "RoboSTEAMuL Bot"
-BOT_VERSION = "1.1 Pro"  # Обновлена версия с новыми программами
+BOT_VERSION = "2.0 Pro"
 SCHOOL_WEBSITE = "robosteamul.com"
 SCHOOL_EMAIL = "info@robosteamul.com"
 
@@ -173,21 +172,87 @@ PROGRAMS_INFO = {
         'price': '350 руб./занятие',
         'duration': '30-60 минут',
     },
-    'doshkolenok': {
-        'name': '👶 Дошколенок (2-4 года)',
-        'age': '2-4 года',
-        'price': '350 руб./занятие',
-        'duration': '45 минут',
+    'doshkolenok_1': {
+        'name': '👶 Дошколёнок - Подготовка к школе (4-5 лет)',
+        'age': '4-5 лет',
+        'price': '400 руб./занятие',
+        'duration': '60 минут',
+    },
+    'doshkolenok_2': {
+        'name': '👶 Дошколёнок - Подготовка к школе (6-7 лет)',
+        'age': '6-7 лет',
+        'price': '400 руб./занятие',
+        'duration': '60 минут',
     },
     'logoped': {
         'name': '🗣️ Логопед (3-7 лет)',
         'age': '3-7 лет',
-        'price': '400 руб./занятие',
+        'price': '600 руб./занятие',
         'duration': '60 минут',
+    },
+    'diagnostics': {
+        'name': '📋 Диагностика',
+        'age': '3-7 лет',
+        'price': '800 руб.',
+        'duration': 'Одно обследование',
     },
 }
 
-# ===== ФУНКЦИИ =====
+# ===== ФУНКЦИИ БАЗЫ ДАННЫХ =====
+
+def get_user_state(user_id):
+    """Получить состояние пользователя"""
+    try:
+        conn = sqlite3.connect(REGISTRATIONS_DB)
+        c = conn.cursor()
+        c.execute('SELECT state, registration_data FROM user_state WHERE user_id = ?', (user_id,))
+        row = c.fetchone()
+        conn.close()
+        
+        if row:
+            return row[0], json.loads(row[1]) if row[1] else {}
+        return 'default', {}
+    except Exception as e:
+        logger.error(f"❌ Ошибка получения состояния: {e}")
+        return 'default', {}
+
+def set_user_state(user_id, state, data=None):
+    """Установить состояние пользователя"""
+    try:
+        conn = sqlite3.connect(REGISTRATIONS_DB)
+        c = conn.cursor()
+        data_json = json.dumps(data) if data else '{}'
+        
+        c.execute('''
+            INSERT OR REPLACE INTO user_state (user_id, state, registration_data, updated_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+        ''', (user_id, state, data_json))
+        
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"❌ Ошибка установки состояния: {e}")
+
+def save_registration(user_id, child_name, child_age, program, branch, phone):
+    """Сохранить запись в БД"""
+    try:
+        conn = sqlite3.connect(REGISTRATIONS_DB)
+        c = conn.cursor()
+        
+        c.execute('''
+            INSERT INTO registrations (user_id, child_name, child_age, program, branch, phone)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (user_id, child_name, child_age, program, branch, phone))
+        
+        conn.commit()
+        conn.close()
+        logger.info(f"✅ Запись сохранена для пользователя {user_id}")
+        return True
+    except Exception as e:
+        logger.error(f"❌ Ошибка сохранения записи: {e}")
+        return False
+
+# ===== ФУНКЦИИ ОТПРАВКИ =====
 
 def send_message(user_id, message):
     """Отправить сообщение"""
@@ -209,375 +274,263 @@ def send_message(user_id, message):
         logger.error(f"❌ Ошибка отправки: {e}")
         return False
 
+# ===== ФУНКЦИИ ПРИВЕТСТВИЯ =====
+
 def get_greeting():
     """Приветствие в зависимости от времени суток"""
     current_hour = datetime.now().hour
     
     # Определяем время суток
     if 5 <= current_hour < 12:
-        # Утро
-        greetings = [
-            """🌅 Доброе утро!
+        greeting = """🌅 Доброе утро!
 
 Рады видеть вас в RoboSTEAMuL! 👋
 
 Мы помогаем детям 3-8 лет развивать творчество и логику.
 
+⏰ Режим работы компании:
+• Пн-Пт: 09:00-18:00
+• Сб-Вс: Выходные
+• 🤖 Чат-бот отвечает 24/7
+
 Что вас интересует?
 • программы - наши курсы
 • филиалы - выберите ближайший центр
 • цены - стоимость занятий
-• контакты - как записаться""",
-            
-            """☀️ Доброе утро!
+• контакты - как записаться"""
+    
+    elif 12 <= current_hour < 17:
+        greeting = """🌤️ Добрый день!
+
+Добро пожаловать в RoboSTEAMuL! 👋
+
+Мы помогаем детям 3-8 лет развивать творчество и логику.
+
+⏰ Режим работы компании:
+• Пн-Пт: 09:00-18:00
+• Сб-Вс: Выходные
+• 🤖 Чат-бот отвечает 24/7
+
+Что вас интересует?
+• программы - наши курсы
+• филиалы - выберите ближайший центр
+• цены - стоимость занятий
+• контакты - как записаться"""
+    
+    elif 17 <= current_hour < 21:
+        greeting = """🌆 Добрый вечер!
 
 Добро пожаловать в RoboSTEAMuL! 🤖
 
-Начните день с интересного выбора курса для вашего ребенка.
-
-Что вас интересует?
-• программы - наши курсы
-• филиалы - выберите ближайший центр
-• цены - стоимость занятий
-• контакты - как записаться"""
-        ]
-    
-    elif 12 <= current_hour < 17:
-        # День
-        greetings = [
-            """🌤️ Добрый день!
-
-Добро пожаловать в RoboSTEAMuL! 👋
-
 Мы помогаем детям 3-8 лет развивать творчество и логику.
 
-Что вас интересует?
-• программы - наши курсы
-• филиалы - выберите ближайший центр
-• цены - стоимость занятий
-• контакты - как записаться""",
-            
-            """☀️ Добрый день!
-
-Рады встречать вас в RoboSTEAMuL! 🤖
-
-Выбирайте программу развития для вашего ребенка.
+⏰ Режим работы компании:
+• Пн-Пт: 09:00-18:00
+• Сб-Вс: Выходные
+• 🤖 Чат-бот отвечает 24/7
 
 Что вас интересует?
 • программы - наши курсы
 • филиалы - выберите ближайший центр
 • цены - стоимость занятий
 • контакты - как записаться"""
-        ]
-    
-    elif 17 <= current_hour < 21:
-        # Вечер
-        greetings = [
-            """🌆 Добрый вечер!
-
-Добро пожаловать в RoboSTEAMuL! 👋
-
-Мы помогаем детям 3-8 лет развивать творчество и логику.
-
-Что вас интересует?
-• программы - наши курсы
-• филиалы - выберите ближайший центр
-• цены - стоимость занятий
-• контакты - как записаться""",
-            
-            """🌙 Добрый вечер!
-
-Спасибо, что посетили RoboSTEAMuL! 🤖
-
-Мы работаем завтра с 09:00. Планируйте развитие вашего ребенка уже сейчас!
-
-Что вас интересует?
-• программы - наши курсы
-• филиалы - выберите ближайший центр
-• цены - стоимость занятий
-• контакты - как записаться"""
-        ]
     
     else:
-        # Ночь
-        greetings = [
-            """🌙 Здравствуйте!
+        greeting = """🌙 Добрый ночи!
 
-Спасибо за интерес к RoboSTEAMuL! 🤖
+Добро пожаловать в RoboSTEAMuL! 🤖
 
-Мы работаем с 09:00 до 18:00 (пн-пт).
-Давайте подготовимся к записи на курсы!
+Мы помогаем детям 3-8 лет развивать творчество и логику.
+Наш чат-бот отвечает 24/7!
 
-Что вас интересует?
-• программы - наши курсы
-• филиалы - выберите ближайший центр
-• цены - стоимость занятий
-• контакты - как записаться""",
-            
-            """🌃 Добро пожаловать в RoboSTEAMuL!
-
-Ночью мы не работаем, но вы можете узнать информацию. 🤖
-
-Мы открываемся завтра в 09:00!
+⏰ Режим работы компании:
+• Пн-Пт: 09:00-18:00
+• Сб-Вс: Выходные
+• 🤖 Чат-бот отвечает 24/7
 
 Что вас интересует?
 • программы - наши курсы
 • филиалы - выберите ближайший центр
 • цены - стоимость занятий
 • контакты - как записаться"""
-        ]
     
-    return random.choice(greetings)
+    return greeting
+
+# ===== ФУНКЦИИ МЕНЮ =====
 
 def get_programs():
-    """Программы"""
-    return """📚 НАШИ ПРОГРАММЫ:
+    """Список программ"""
+    response = """📚 НАШИ ПРОГРАММЫ:
 
-🤖 РОБОТОТЕХНИКА:
-1️⃣ РобоSTEAM (3-4 года) - 300 руб./занятие, 30 мин
-2️⃣ РобоSTEAM Брик (5-6 лет) - 300 руб./занятие, 60 мин
-3️⃣ РобоSTEAM Про (6-8 лет) - 400 руб./занятие, 60 мин
+🤖 РобоSTEAM (3-4 года)
+   Возраст: 3-4 года | Время: 30 минут | Цена: 300 руб./занятие
 
-💃 ХОРЕОГРАФИЯ:
-4️⃣ Хореография (3-8 лет) - 350 руб./занятие
+🧱 РобоSTEAM Брик (5-6 лет)
+   Возраст: 5-6 лет | Время: 60 минут | Цена: 300 руб./занятие
 
-👶 РАЗВИТИЕ МАЛЫШЕЙ:
-5️⃣ Дошколенок (2-4 года) - 350 руб./занятие, 45 мин
+⚙️ РобоSTEAM Про (6-8 лет)
+   Возраст: 6-8 лет | Время: 60 минут | Цена: 400 руб./занятие
 
-🗣️ РЕЧЬ И РАЗВИТИЕ:
-6️⃣ Логопед (3-7 лет) - 400 руб./занятие, 60 мин
+💃 Хореография (3-8 лет)
+   Возраст: 3-8 лет | Время: 30-60 минут | Цена: 350 руб./занятие
 
-✅ ПЕРВОЕ ЗАНЯТИЕ БЕСПЛАТНО! 🎁"""
+👶 Дошколёнок - Подготовка к школе (4-5 лет)
+   Возраст: 4-5 лет | Время: 60 минут | Цена: 400 руб./занятие
 
-def get_branches():
-    """Филиалы"""
-    menu = """📍 НАШИ ФИЛИАЛЫ (26 центров):
+👶 Дошколёнок - Подготовка к школе (6-7 лет)
+   Возраст: 6-7 лет | Время: 60 минут | Цена: 400 руб./занятие
 
-Напишите число (1-26) или название:
-"""
-    for i, branch in enumerate(BRANCHES_LIST[:8], 1):
-        programs_count = len(branch['programs'])
-        menu += f"{i}. {branch['name']} ({programs_count} программ)\n"
+🗣️ Логопед (3-7 лет)
+   Возраст: 3-7 лет | Время: 60 минут | Цена: 600 руб./занятие
+
+📋 Диагностика
+   Возраст: 3-7 лет | Цена: 800 руб.
+
+👉 Напишите 'записаться' для регистрации!"""
     
-    menu += f"\n... и еще {len(BRANCHES_LIST) - 8} филиалов\n\nПримеры:\n• напишите '1' для ДОУ №30\n• напишите 'ДОУ №448СП'"
-    
-    return menu
+    return response
 
 def get_prices():
-    """Цены"""
-    return """💰 СТОИМОСТЬ:
+    """Таблица цен"""
+    response = """💰 ТАБЛИЦА ЦЕН:
 
-🤖 РОБОТОТЕХНИКА:
-• РобоSTEAM (3-4 года) - 300 руб./занятие (30 мин)
-• РобоSTEAM Брик (5-6 лет) - 300 руб./занятие (60 мин)
-• РобоSTEAM Про (6-8 лет) - 400 руб./занятие (60 мин)
+🤖 РобоSTEAM (3-4 года) - 300 руб./занятие (30 мин)
+🧱 РобоSTEAM Брик (5-6 лет) - 300 руб./занятие (60 мин)
+⚙️ РобоSTEAM Про (6-8 лет) - 400 руб./занятие (60 мин)
+💃 Хореография (3-8 лет) - 350 руб./занятие (30-60 мин)
+👶 Дошколёнок (4-5 лет) - 400 руб./занятие (60 мин)
+👶 Дошколёнок (6-7 лет) - 400 руб./занятие (60 мин)
+🗣️ Логопед (3-7 лет) - 600 руб./занятие (60 мин)
+📋 Диагностика - 800 руб.
 
-💃 ХОРЕОГРАФИЯ:
-• Хореография (3-8 лет) - 350 руб./занятие
+ℹ️ Первое занятие БЕСПЛАТНО! 🎁
 
-👶 РАЗВИТИЕ МАЛЫШЕЙ:
-• Дошколенок (2-4 года) - 350 руб./занятие (45 мин)
-
-🗣️ ЛОГОПЕДИЯ:
-• Логопед (3-7 лет) - 400 руб./занятие (60 мин)
-
-🎁 СКИДКИ:
-✅ Первое занятие БЕСПЛАТНО!
-✅ На полугодие - скидка 5%
-✅ На год - скидка 10%"""
+📞 Вопросы о ценах? Свяжитесь с нами:
+Наталья: +7 (922) 014-44-94
+Ксения: +7 (904) 805-25-61
+Жанна: +7 (951) 239-86-49"""
+    
+    return response
 
 def get_contacts():
-    """Контакты"""
-    contacts_str = "📞 КОНТАКТЫ:\n\n"
-    
-    contacts_str += "☎️ ПОЗВОНИТЕ НАМ:\n"
-    for contact in CONTACTS.values():
-        contacts_str += f"{contact['number']} ({contact['name']})\n"
-    
-    contacts_str += f"\n📧 Email: {SCHOOL_EMAIL}\n"
-    contacts_str += f"🌐 Сайт: {SCHOOL_WEBSITE}\n\n"
-    
-    contacts_str += "🕐 РЕЖИМ РАБОТЫ:\n"
-    contacts_str += f"{WORK_SCHEDULE['weekdays']}: {WORK_SCHEDULE['time']}\n"
-    contacts_str += f"{WORK_SCHEDULE['weekends']}: {WORK_SCHEDULE['weekends']}\n\n"
-    
-    contacts_str += "📍 26 ФИЛИАЛОВ ПО ГОРОДУ\n"
-    contacts_str += "🎁 ПЕРВОЕ ЗАНЯТИЕ БЕСПЛАТНО!"
-    
-    return contacts_str
+    """Контактная информация"""
+    response = """📞 НАШИ КОНТАКТЫ:
 
-# ===== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =====
+👩‍💼 Наталья: +7 (922) 014-44-94
+👩‍💼 Ксения: +7 (904) 805-25-61
+👩‍💼 Жанна: +7 (951) 239-86-49
 
-def send_typing(user_id):
-    """Показать что бот печатает (думает)"""
-    try:
-        if vk:
-            vk.messages.setActivity(
-                user_id=user_id,
-                type='typing',
-                v=API_VERSION
-            )
-    except Exception as e:
-        logger.warning(f"⚠️ Ошибка при показе печатания: {e}")
+📧 Email: info@robosteamul.com
+🌐 Сайт: robosteamul.com
 
-def find_similar_word(word, options, threshold=0.6):
-    """Найти похожее слово в списке (для обработки опечаток)"""
-    best_match = None
-    best_ratio = threshold
+⏰ Режим работы:
+• Пн-Пт: 09:00-18:00
+• Сб-Вс: Выходные
+• 🤖 Чат-бот отвечает 24/7
+
+✅ Готовы к записи? Напишите 'записаться'"""
     
-    for option in options:
-        ratio = SequenceMatcher(None, word.lower(), option.lower()).ratio()
-        if ratio > best_ratio:
-            best_ratio = ratio
-            best_match = option
+    return response
+
+def get_branches():
+    """Список филиалов"""
+    response = "📍 НАШИ ФИЛИАЛЫ:\n\n"
     
-    return best_match
+    for i, branch in enumerate(BRANCHES_LIST, 1):
+        response += f"{i}. {branch['name']}\n"
+    
+    response += f"\n👉 Напишите номер (1-{len(BRANCHES_LIST)}) или название филиала"
+    
+    return response
 
 # ===== ФУНКЦИИ ЗАПИСИ =====
 
-def get_user_state(user_id):
-    """Получить состояние пользователя"""
-    try:
-        conn = sqlite3.connect(REGISTRATIONS_DB)
-        c = conn.cursor()
-        c.execute('SELECT state, registration_data FROM user_state WHERE user_id = ?', (user_id,))
-        result = c.fetchone()
-        conn.close()
-        
-        if result:
-            state, data = result
-            return state, json.loads(data) if data else {}
-        return 'default', {}
-    except Exception as e:
-        logger.error(f"❌ Ошибка получения состояния: {e}")
-        return 'default', {}
-
-def set_user_state(user_id, state, data=None):
-    """Установить состояние пользователя"""
-    try:
-        conn = sqlite3.connect(REGISTRATIONS_DB)
-        c = conn.cursor()
-        data_json = json.dumps(data) if data else None
-        c.execute('''
-            INSERT OR REPLACE INTO user_state (user_id, state, registration_data)
-            VALUES (?, ?, ?)
-        ''', (user_id, state, data_json))
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        logger.error(f"❌ Ошибка установки состояния: {e}")
-
-def save_registration(user_id, child_name, child_age, program, branch, phone):
-    """Сохранить запись на занятие"""
-    try:
-        conn = sqlite3.connect(REGISTRATIONS_DB)
-        c = conn.cursor()
-        c.execute('''
-            INSERT INTO registrations (user_id, child_name, child_age, program, branch, phone)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (user_id, child_name, child_age, program, branch, phone))
-        conn.commit()
-        conn.close()
-        logger.info(f"✅ Запись сохранена: {child_name}, {program}, {branch}")
-        return True
-    except Exception as e:
-        logger.error(f"❌ Ошибка сохранения записи: {e}")
-        return False
-
 def start_registration(user_id):
-    """Начать процесс записи"""
-    set_user_state(user_id, 'waiting_name', {})
-    return """📝 ЗАПИСЬ НА ЗАНЯТИЕ
+    """Начало записи"""
+    set_user_state(user_id, 'waiting_child_name', {})
+    
+    response = """✏️ ЗАПИСЬ НА ЗАНЯТИЕ
 
-Отлично! 🎉 Давайте запишем вашего ребенка на занятие! 
+Спасибо за интерес! 😊
 
-Это займет всего 5️⃣ шагов! ⚡
+Давайте оформим вашу запись.
 
-Начнем! 👶 Как зовут вашего ребенка?
+1️⃣ Как зовут вашего ребенка? (Просто напишите имя)
 
-Пример: Маша, Иван, Кирилл"""
+Или напишите 'отмена' для отмены записи"""
+    
+    return response
+
+def find_similar_word(word, word_list, threshold=0.6):
+    """Поиск похожего слова"""
+    best_match = None
+    best_ratio = threshold
+    
+    for w in word_list:
+        ratio = SequenceMatcher(None, word, w).ratio()
+        if ratio > best_ratio:
+            best_ratio = ratio
+            best_match = w
+    
+    return best_match
 
 def handle_registration(user_id, text, state, data):
     """Обработка процесса записи"""
     text_lower = text.lower().strip()
     
-    if state == 'waiting_name':
+    if state == 'waiting_child_name':
         data['child_name'] = text
-        set_user_state(user_id, 'waiting_age', data)
-        return f"""📌 Шаг 1/5: Имя ✅
+        set_user_state(user_id, 'waiting_child_age', data)
+        
+        return f"""✅ Спасибо, {text}!
 
-Спасибо! 😊 {text} - отличное имя! 💙
-
-Теперь скажите нам, сколько лет {text}у?
-
-Пример: 5 или 7"""
+2️⃣ Сколько лет вашему ребенку? (Напишите число, например: 5)"""
     
-    elif state == 'waiting_age':
+    elif state == 'waiting_child_age':
         try:
             age = int(text_lower)
-            if 3 <= age <= 8:
+            if 2 <= age <= 10:
                 data['child_age'] = age
                 set_user_state(user_id, 'waiting_program', data)
                 
-                programs_list = f"""✨ Отлично, {data.get('child_name')}! Ребенку {age} лет! 🎉
-
-Теперь выберите программу:
-
-🤖 РОБОТОТЕХНИКА:
-1️⃣ РобоSTEAM (3-4 года) - 300 руб.
-2️⃣ РобоSTEAM Брик (5-6 лет) - 300 руб.
-3️⃣ РобоSTEAM Про (6-8 лет) - 400 руб.
-
-💃 ХОРЕОГРАФИЯ:
-4️⃣ Хореография (3-8 лет) - 350 руб.
-
-👶 РАЗВИТИЕ:
-5️⃣ Дошколенок (2-4 года) - 350 руб.
-
-🗣️ ЛОГОПЕДИЯ:
-6️⃣ Логопед (3-7 лет) - 400 руб.
-
-Напишите номер (1-6):"""
+                programs_list = "3️⃣ Какую программу вы выбираете?\n\n"
+                for i, (key, prog) in enumerate(PROGRAMS_INFO.items(), 1):
+                    programs_list += f"{i}. {prog['name']} ({prog['duration']})\n"
+                
+                programs_list += f"\n👉 Напишите номер программы (1-{len(PROGRAMS_INFO)})"
                 
                 return programs_list
             else:
-                return "⚠️ Кажется, возраст должен быть от 3 до 8 лет! 😊\n\nПопробуйте еще раз. Сколько лет вашему ребенку?"
+                return "❌ Возраст должен быть от 2 до 10 лет. Попробуйте еще раз:"
         except ValueError:
-            return "🤔 Я вас не понимаю... Пожалуйста, напишите число (например: 5)"
+            return "❌ Пожалуйста, введите число. Например: 5"
     
     elif state == 'waiting_program':
-        programs_map = {
-            '1': '🤖 РобоSTEAM (3-4 года)',
-            '2': '🧱 РобоSTEAM Брик (5-6 лет)',
-            '3': '⚙️ РобоSTEAM Про (6-8 лет)',
-            '4': '💃 Хореография',
-            '5': '👶 Дошколенок (2-4 года)',
-            '6': '🗣️ Логопед (3-7 лет)'
-        }
+        try:
+            if text_lower.isdigit():
+                num = int(text_lower)
+                programs_list = list(PROGRAMS_INFO.values())
+                
+                if 1 <= num <= len(programs_list):
+                    program = programs_list[num - 1]
+                    data['program'] = program['name']
+                    set_user_state(user_id, 'waiting_branch', data)
+                    
+                    branches_response = "4️⃣ Выберите филиал:\n\n"
+                    for i, branch in enumerate(BRANCHES_LIST, 1):
+                        branches_response += f"{i}. {branch['name']}\n"
+                    
+                    branches_response += f"\n👉 Напишите номер филиала (1-{len(BRANCHES_LIST)})"
+                    
+                    return branches_response
+                else:
+                    return f"❌ Номер должен быть от 1 до {len(PROGRAMS_INFO)}. Попробуйте еще раз:"
+        except ValueError:
+            pass
         
-        if text_lower in programs_map:
-            data['program'] = programs_map[text_lower]
-            set_user_state(user_id, 'waiting_branch', data)
-            
-            branches_list = f"""🎯 Отлично! Вы выбрали: {programs_map[text_lower]} 👍
-
-Теперь выберите филиал. Всего у нас 26 центров! 
-
-Вот первые 5️⃣:
-1️⃣ ДОУ №30
-2️⃣ ДОУ №30СП
-3️⃣ ДОУ №10 Копейск
-4️⃣ ДОУ №18СП
-5️⃣ ДОУ №24 Копейск
-
-Напишите номер (1-26) или название филиала:"""
-            
-            return branches_list
-        else:
-            return "🤔 Пожалуйста, выберите номер от 1️⃣ до 6️⃣\n\nКакую программу вы предпочитаете?"
+        return "❌ Пожалуйста, выберите программу по номеру"
     
     elif state == 'waiting_branch':
-        # Поиск филиала по номеру
         if text_lower.isdigit():
             try:
                 num = int(text_lower)
@@ -585,34 +538,35 @@ def handle_registration(user_id, text, state, data):
                     branch = BRANCHES_LIST[num - 1]
                     data['branch'] = branch['name']
                     set_user_state(user_id, 'waiting_phone', data)
-                    return f"""📍 Отлично! Вы выбрали: {branch['name']} 👍
+                    
+                    return f"""✅ Выбран филиал: {branch['name']}
 
-Почти готово! Напишите номер телефона родителя:
+5️⃣ И последнее - ваш номер телефона? 📱
 
-Пример: +7 (900) 123-45-67"""
+Форма: +7 (XXX) XXX-XX-XX"""
                 else:
-                    return f"⚠️ Номер должен быть от 1️⃣ до {len(BRANCHES_LIST)}️⃣\n\nПопробуйте еще раз или напишите название филиала:"
+                    return f"❌ Номер филиала должен быть от 1 до {len(BRANCHES_LIST)}"
             except ValueError:
-                logger.error(f"Ошибка преобразования номера филиала: {text_lower}")
+                return "❌ Пожалуйста, введите номер филиала"
         
         # Поиск по названию
+        text_lower = text.lower()
         for branch in BRANCHES_LIST:
             if text_lower in branch['name'].lower():
                 data['branch'] = branch['name']
                 set_user_state(user_id, 'waiting_phone', data)
-                return f"""📍 Супер! Вы выбрали: {branch['name']} 👍
+                
+                return f"""✅ Выбран филиал: {branch['name']}
 
-Осталось только номер телефона! Напишите номер телефона родителя:
+5️⃣ И последнее - ваш номер телефона? 📱
 
-Пример: +7 (900) 123-45-67"""
+Форма: +7 (XXX) XXX-XX-XX"""
         
-        # Попытка найти похожий филиал
-        similar = find_similar_word(text_lower, [b['name'].lower() for b in BRANCHES_LIST], threshold=0.7)
-        if similar:
-            suggestion = next((b['name'] for b in BRANCHES_LIST if b['name'].lower() == similar), None)
+        suggestion = find_similar_word(text_lower, [b['name'] for b in BRANCHES_LIST], 0.65)
+        if suggestion:
             return f"🤔 Вы имели в виду: {suggestion}?\n\nНапишите его номер или полное название:"
         
-        return f"🤔 Филиал '{text_lower}' не найден 😕\n\nНапишите номер (1-{len(BRANCHES_LIST)}) или название филиала:"
+        return f"🤔 Филиал '{text}' не найден 😕\n\nНапишите номер (1-{len(BRANCHES_LIST)}) или название филиала:"
     
     elif state == 'waiting_phone':
         data['phone'] = text
@@ -680,23 +634,23 @@ def handle_message(text, user_id):
     # Приветствие
     if text_lower in ['привет', 'hi', 'hello', 'привет!', 'хай', 'начать', 
                       'добрый день', 'доброе утро', 'добрый вечер', 'добрая ночь',
-                      'здравствуйте', 'здравствуй', 'пока', 'привет привет']:
+                      'здравствуйте', 'здравствуй', 'пока', 'привет привет', 'меню']:
         return get_greeting()
     
     # Программы
-    elif text_lower in ['программы', 'programs', 'курсы', 'обучение']:
+    elif text_lower in ['программы', 'programs', 'курсы', 'обучение', 'программа']:
         return get_programs()
     
     # Филиалы
-    elif text_lower in ['филиалы', 'branches', 'где', 'адреса', 'центры']:
+    elif text_lower in ['филиалы', 'branches', 'где', 'адреса', 'центры', 'филиал']:
         return get_branches()
     
     # Цены
-    elif text_lower in ['цены', 'price', 'стоимость', 'сколько']:
+    elif text_lower in ['цены', 'price', 'стоимость', 'сколько', 'цена']:
         return get_prices()
     
     # Контакты
-    elif text_lower in ['контакты', 'contacts', 'телефон', 'phone', 'звоните']:
+    elif text_lower in ['контакты', 'contacts', 'телефон', 'phone', 'звоните', 'контакт']:
         return get_contacts()
     
     # Запись на занятие
@@ -747,16 +701,15 @@ def handle_message(text, user_id):
         similar_command = find_similar_word(text_lower, commands, threshold=0.65)
         
         if similar_command:
-            return f"""🤔 Вы имели в виду: '{similar_command}'? 
+            return f"""🤔 Вы имели в виду: '{similar_command}'?
 
-Попробую выполнить вашу команду... 🚀
-
-📌 А если вам нужно что-то еще, напишите:
+📌 Доступные команды:
 • программы 📚 - наши курсы
 • филиалы 📍 - где заниматься  
 • цены 💰 - стоимость занятий
 • контакты 📞 - как записаться
-• записаться ✏️ - начать запись на занятие"""
+• записаться ✏️ - начать запись на занятие
+• привет ☀️ - главное меню"""
         
         return """🤔 Мм, я вас не совсем понял! 😊
 
@@ -794,19 +747,19 @@ def health():
 
 @app.route('/callback', methods=['POST'])
 def callback():
-    """Обработчик вебхуков от VK"""
+    """Обработчик вебхуков от VK - БОТ ОТВЕЧАЕТ ТОЛЬКО НА ВХОДЯЩИЕ СООБЩЕНИЯ"""
     try:
         data = request.json
         
         if not data:
             logger.warning("⚠️ Пустой запрос")
-            return jsonify({'error': 'Empty request'}), 400
+            return jsonify({'ok': True}), 200
         
         logger.info(f"📩 Вебхук получен: {data.get('type')}")
         
         if VK_SECRET_KEY and data.get('secret') != VK_SECRET_KEY:
             logger.warning("⚠️ Неверный секретный ключ")
-            return jsonify({'error': 'Invalid secret'}), 403
+            return jsonify({'ok': True}), 200
         
         event_type = data.get('type')
         
@@ -814,25 +767,30 @@ def callback():
             logger.info("✅ Confirmation request")
             return VK_CONFIRMATION_CODE, 200
         
+        # БОТ ОТВЕЧАЕТ ТОЛЬКО НА message_new
         if event_type == 'message_new':
             message = data.get('object', {}).get('message', {})
             user_id = message.get('from_id')
             text = message.get('text', '')
             
+            # Игнорируем сообщения от сервисов и пустые
             if user_id < 0:
                 logger.info("ℹ️ Сообщение от сервиса, игнорируем")
                 return jsonify({'ok': True}), 200
             
-            if text.strip():
-                logger.info(f"📨 Сообщение от {user_id}: {text}")
-                response = handle_message(text, user_id)
-                send_message(user_id, response)
+            if not text or not text.strip():
+                logger.info("ℹ️ Пустое сообщение, игнорируем")
+                return jsonify({'ok': True}), 200
+            
+            logger.info(f"📨 Сообщение от {user_id}: {text}")
+            response = handle_message(text, user_id)
+            send_message(user_id, response)
         
         return jsonify({'ok': True}), 200
     
     except Exception as e:
         logger.error(f"❌ Ошибка в callback: {e}", exc_info=True)
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'ok': True}), 200
 
 @app.route('/stats', methods=['GET'])
 def stats():
@@ -866,6 +824,7 @@ if __name__ == '__main__':
     logger.info(f"🔗 http://0.0.0.0:{port}")
     logger.info(f"📍 Филиалов: {len(BRANCHES_LIST)}")
     logger.info(f"📚 Программ: {len(PROGRAMS_INFO)}")
+    logger.info("⚠️ БОТ ОТВЕЧАЕТ ТОЛЬКО НА ВХОДЯЩИЕ СООБЩЕНИЯ (нет лишних отправок)")
     
     app.run(
         host='0.0.0.0',
