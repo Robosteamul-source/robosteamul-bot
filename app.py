@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-🤖 RoboSTEAMuL VK Bot - Простая версия
+🤖 RoboSTEAMuL VK Bot - Улучшенная версия
 Функции: Приветствие, Программы, Филиалы, Цены, Контакты, Запись
 """
 
@@ -16,6 +16,8 @@ from datetime import datetime
 import random
 import sqlite3
 import json
+import time
+from difflib import SequenceMatcher
 
 # ===== ЛОГГЕР =====
 logging.basicConfig(level=logging.INFO)
@@ -378,6 +380,33 @@ def get_contacts():
     
     return contacts_str
 
+# ===== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =====
+
+def send_typing(user_id):
+    """Показать что бот печатает (думает)"""
+    try:
+        if vk:
+            vk.messages.setActivity(
+                user_id=user_id,
+                type='typing',
+                v=API_VERSION
+            )
+    except Exception as e:
+        logger.warning(f"⚠️ Ошибка при показе печатания: {e}")
+
+def find_similar_word(word, options, threshold=0.6):
+    """Найти похожее слово в списке (для обработки опечаток)"""
+    best_match = None
+    best_ratio = threshold
+    
+    for option in options:
+        ratio = SequenceMatcher(None, word.lower(), option.lower()).ratio()
+        if ratio > best_ratio:
+            best_ratio = ratio
+            best_match = option
+    
+    return best_match
+
 # ===== ФУНКЦИИ ЗАПИСИ =====
 
 def get_user_state(user_id):
@@ -434,11 +463,13 @@ def start_registration(user_id):
     set_user_state(user_id, 'waiting_name', {})
     return """📝 ЗАПИСЬ НА ЗАНЯТИЕ
 
-Отлично! Давайте запишем вашего ребенка на занятие! 🎉
+Отлично! 🎉 Давайте запишем вашего ребенка на занятие! 
 
-Сначала напишите: Как зовут вашего ребенка?
+Это займет всего 5️⃣ шагов! ⚡
 
-Пример: Маша"""
+Начнем! 👶 Как зовут вашего ребенка?
+
+Пример: Маша, Иван, Кирилл"""
 
 def handle_registration(user_id, text, state, data):
     """Обработка процесса записи"""
@@ -447,11 +478,13 @@ def handle_registration(user_id, text, state, data):
     if state == 'waiting_name':
         data['child_name'] = text
         set_user_state(user_id, 'waiting_age', data)
-        return """Спасибо! 😊
+        return f"""📌 Шаг 1/5: Имя ✅
 
-Сколько лет вашему ребенку?
+Спасибо! 😊 {text} - отличное имя! 💙
 
-Пример: 5"""
+Теперь скажите нам, сколько лет {text}у?
+
+Пример: 5 или 7"""
     
     elif state == 'waiting_age':
         try:
@@ -460,45 +493,51 @@ def handle_registration(user_id, text, state, data):
                 data['child_age'] = age
                 set_user_state(user_id, 'waiting_program', data)
                 
-                programs_list = """Какая программа вас интересует?
+                programs_list = f"""✨ Отлично, {data.get('child_name')}! Ребенку {age} лет! 🎉
 
-Напишите номер:
-1️⃣ РобоSTEAM (3-4 года) - 300 руб.
-2️⃣ РобоSTEAM Брик (5-6 лет) - 300 руб.
-3️⃣ РобоSTEAM Про (6-8 лет) - 400 руб.
-4️⃣ Хореография (3-8 лет) - 350 руб."""
+Теперь выберите программу:
+
+1️⃣ РобоSTEAM (3-4 года) - 300 руб./занятие
+2️⃣ РобоSTEAM Брик (5-6 лет) - 300 руб./занятие
+3️⃣ РобоSTEAM Про (6-8 лет) - 400 руб./занятие
+4️⃣ 💃 Хореография (3-8 лет) - 350 руб./занятие
+
+Напишите номер (1-4):"""
                 
                 return programs_list
             else:
-                return "❌ Возраст должен быть от 3 до 8 лет.\n\nПопробуйте еще раз:"
-        except:
-            return "❌ Пожалуйста, напишите число (например: 5)"
+                return "⚠️ Кажется, возраст должен быть от 3 до 8 лет! 😊\n\nПопробуйте еще раз. Сколько лет вашему ребенку?"
+        except ValueError:
+            return "🤔 Я вас не понимаю... Пожалуйста, напишите число (например: 5)"
     
     elif state == 'waiting_program':
         programs_map = {
-            '1': 'РобоSTEAM (3-4 года)',
-            '2': 'РобоSTEAM Брик (5-6 лет)',
-            '3': 'РобоSTEAM Про (6-8 лет)',
-            '4': 'Хореография'
+            '1': '🤖 РобоSTEAM (3-4 года)',
+            '2': '🧱 РобоSTEAM Брик (5-6 лет)',
+            '3': '⚙️ РобоSTEAM Про (6-8 лет)',
+            '4': '💃 Хореография'
         }
         
         if text_lower in programs_map:
             data['program'] = programs_map[text_lower]
             set_user_state(user_id, 'waiting_branch', data)
             
-            branches_list = """Выберите филиал. Напишите номер (1-26) или название:
+            branches_list = f"""🎯 Отлично! Вы выбрали: {programs_map[text_lower]} 👍
 
+Теперь выберите филиал. Всего у нас 26 центров! 
+
+Вот первые 5️⃣:
 1️⃣ ДОУ №30
 2️⃣ ДОУ №30СП
 3️⃣ ДОУ №10 Копейск
 4️⃣ ДОУ №18СП
 5️⃣ ДОУ №24 Копейск
 
-Напишите номер или название филиала:"""
+Напишите номер (1-26) или название филиала:"""
             
             return branches_list
         else:
-            return "❌ Пожалуйста, выберите номер от 1 до 4"
+            return "🤔 Пожалуйста, выберите номер от 1️⃣ до 4️⃣\n\nКакую программу вы предпочитаете?"
     
     elif state == 'waiting_branch':
         # Поиск филиала по номеру
@@ -509,28 +548,34 @@ def handle_registration(user_id, text, state, data):
                     branch = BRANCHES_LIST[num - 1]
                     data['branch'] = branch['name']
                     set_user_state(user_id, 'waiting_phone', data)
-                    return f"""Отлично! Вы выбрали: {branch['name']}
+                    return f"""📍 Отлично! Вы выбрали: {branch['name']} 👍
 
-Теперь напишите номер телефона родителя:
+Почти готово! Напишите номер телефона родителя:
 
 Пример: +7 (900) 123-45-67"""
                 else:
-                    return f"❌ Номер должен быть от 1 до {len(BRANCHES_LIST)}"
-            except:
-                pass
+                    return f"⚠️ Номер должен быть от 1️⃣ до {len(BRANCHES_LIST)}️⃣\n\nПопробуйте еще раз или напишите название филиала:"
+            except ValueError:
+                logger.error(f"Ошибка преобразования номера филиала: {text_lower}")
         
         # Поиск по названию
         for branch in BRANCHES_LIST:
             if text_lower in branch['name'].lower():
                 data['branch'] = branch['name']
                 set_user_state(user_id, 'waiting_phone', data)
-                return f"""Отлично! Вы выбрали: {branch['name']}
+                return f"""📍 Супер! Вы выбрали: {branch['name']} 👍
 
-Теперь напишите номер телефона родителя:
+Осталось только номер телефона! Напишите номер телефона родителя:
 
 Пример: +7 (900) 123-45-67"""
         
-        return "❌ Филиал не найден. Напишите номер (1-26) или название"
+        # Попытка найти похожий филиал
+        similar = find_similar_word(text_lower, [b['name'].lower() for b in BRANCHES_LIST], threshold=0.7)
+        if similar:
+            suggestion = next((b['name'] for b in BRANCHES_LIST if b['name'].lower() == similar), None)
+            return f"🤔 Вы имели в виду: {suggestion}?\n\nНапишите его номер или полное название:"
+        
+        return f"🤔 Филиал '{text_lower}' не найден 😕\n\nНапишите номер (1-{len(BRANCHES_LIST)}) или название филиала:"
     
     elif state == 'waiting_phone':
         data['phone'] = text
@@ -546,26 +591,35 @@ def handle_registration(user_id, text, state, data):
         ):
             set_user_state(user_id, 'default', {})
             
-            confirmation = f"""✅ ЗАПИСЬ ПОДТВЕРЖДЕНА!
+            confirmation = f"""🎉🎉🎉 ЗАПИСЬ УСПЕШНО ПОДТВЕРЖДЕНА! 🎉🎉🎉
 
-Спасибо! Вот ваша запись:
+Спасибо, что выбрали RoboSTEAMuL! 💙
 
-📝 Ребенок: {data.get('child_name')}
-🎂 Возраст: {data.get('child_age')} лет
-🎯 Программа: {data.get('program')}
-📍 Филиал: {data.get('branch')}
-📱 Телефон: {data.get('phone')}
+Вот краткая информация вашей записи:
 
-🎉 Скоро мы с вами свяжемся!
+👶 Ребенок: {data.get('child_name')} ✨
+🎂 Возраст: {data.get('child_age')} лет 🎈
+🎯 Программа: {data.get('program')} 🚀
+📍 Филиал: {data.get('branch')} 🏫
+📱 Телефон: {data.get('phone')} ☎️
 
-Спасибо за выбор RoboSTEAMuL! 💪"""
+⏰ Что дальше?
+🔔 Мы позвоним вам в течение 24 часов!
+✅ Первое занятие БЕСПЛАТНО! 🎁
+
+📞 Если у вас есть вопросы:
+• Наталья: +7 (922) 014-44-94
+• Ксения: +7 (904) 805-25-61
+• Жанна: +7 (951) 239-86-49
+
+💪 Спасибо за доверие! До скорого! 🚀"""
             
             return confirmation
         else:
             set_user_state(user_id, 'default', {})
-            return "❌ Ошибка при сохранении записи. Пожалуйста, попробуйте позже."
+            return "⚠️ Ой! Ошибка при сохранении записи 😕\n\nПожалуйста, попробуйте позже или позвоните нам напрямую:\n+7 (922) 014-44-94"
     
-    return "Что-то пошло не так. Напишите 'записаться' чтобы начать заново."
+    return "🤔 Что-то пошло не так... Напишите 'записаться' 📝 чтобы начать заново!"
 
 def handle_message(text, user_id):
     """Обработка сообщения"""
@@ -675,16 +729,35 @@ def handle_message(text, user_id):
         
         return f"❌ Филиал не найден\n\nНапишите 'филиалы' для полного списка"
     
-    # По умолчанию
+    # По умолчанию - попытка найти похожую команду
     else:
-        return """😊 Я вас не совсем понял!
+        commands = ['программы', 'филиалы', 'цены', 'контакты', 'записаться']
+        similar_command = find_similar_word(text_lower, commands, threshold=0.65)
+        
+        if similar_command:
+            return f"""🤔 Вы имели в виду: '{similar_command}'? 
 
-Напишите:
-• программы - наши курсы
-• филиалы - где заниматься
-• цены - стоимость
-• контакты - как записаться
-• записаться - начать запись на занятие"""
+Попробую выполнить вашу команду... 🚀
+
+📌 А если вам нужно что-то еще, напишите:
+• программы 📚 - наши курсы
+• филиалы 📍 - где заниматься  
+• цены 💰 - стоимость занятий
+• контакты 📞 - как записаться
+• записаться ✏️ - начать запись на занятие"""
+        
+        return """🤔 Мм, я вас не совсем понял! 😊
+
+Что вас интересует? Напишите:
+
+📚 программы - наши курсы
+📍 филиалы - где заниматься  
+💰 цены - стоимость занятий
+📞 контакты - как записаться
+✏️ записаться - начать запись на занятие
+🎉 привет - главное меню
+
+Или просто напишите что-нибудь из этого! 👆"""
 
 # ===== FLASK ROUTES =====
 
