@@ -26,6 +26,16 @@ VK_TOKEN = os.getenv('VK_TOKEN', '')
 VK_SECRET = os.getenv('VK_SECRET', '')
 VK_CONFIRMATION_TOKEN = os.getenv('VK_CONFIRMATION_TOKEN', '43a38a83')
 
+# ID администратора для отправки уведомлений
+ADMIN_ID = 441534266
+
+# Контакты отдела заботы
+CARE_TEAM = [
+    {'name': 'Наталья', 'phone': '+7 (922) 014-44-94'},
+    {'name': 'Ксения', 'phone': '+7 (904) 805-25-61'},
+    {'name': 'Жанна', 'phone': '+7 (951) 239-86-49'}
+]
+
 # Логирование
 logging.basicConfig(
     level=logging.INFO,
@@ -91,7 +101,7 @@ PROGRAMS = {
         'emoji': '📚'
     },
     'school_1': {
-        'name': 'Дошколёнок За год до Школы',
+        'name': 'Дошколёнок за год до Школы',
         'age': '6-7 лет',
         'description': 'Интенсивная подготовка в выпускной год. Освоение школьных навыков и самодисциплины.',
         'price': '375 руб за занятие',
@@ -196,7 +206,12 @@ def get_all_programs() -> str:
 
 Или напишите "запись" чтобы записать ребенка на занятия! 🎯
 
-☎️ Также вы можете позвонить нам прямо сейчас!'''
+☎️ Также вы можете позвонить нам прямо сейчас!
+
+📱 ОТДЕЛ ЗАБОТЫ:
+   📞 +7 (922) 014-44-94 - Наталья
+   📞 +7 (904) 805-25-61 - Ксения
+   📞 +7 (951) 239-86-49 - Жанна'''
     return text
 
 def get_program_details(program_key: str) -> Optional[str]:
@@ -221,6 +236,13 @@ def get_program_details(program_key: str) -> Optional[str]:
    ✓ Первое занятие - бесплатное!
 
 📞 Для более подробной информации оставьте номер телефона свой и наш отдел заботы с вами свяжется!
+
+☎️ Также вы можете позвонить нам прямо сейчас!
+
+📱 ОТДЕЛ ЗАБОТЫ:
+   📞 +7 (922) 014-44-94 - Наталья
+   📞 +7 (904) 805-25-61 - Ксения
+   📞 +7 (951) 239-86-49 - Жанна
 
 Хотите записать ребенка на эту программу?
 → Напишите "запись" или "регистрация"'''
@@ -486,6 +508,56 @@ def send_message(user_id: int, text: str) -> bool:
         logger.error(f'❌ Ошибка отправки сообщения: {str(e)}')
         return False
 
+def send_admin_notification(user_id: int, phone: str, data: Dict) -> bool:
+    """Отправляет уведомление администратору о новом клиенте"""
+    if not VK_TOKEN:
+        logger.error('❌ VK_TOKEN не установлен!')
+        return False
+    
+    child_name = data.get('child_name', 'Не указано')
+    program_name = data.get('program_name', 'Не выбрана')
+    parent_name = data.get('parent_name', 'Не указано')
+    
+    text = f'''🔔 НОВЫЙ КЛИЕНТ 🔔
+
+👤 Пользователь VK: {user_id}
+
+📞 НОМЕР ТЕЛЕФОНА: {phone}
+
+👶 ФИО ребенка: {child_name}
+👨 ФИО родителя: {parent_name}
+🎓 Интересует программу: {program_name}
+
+⚠️ ДЕЙСТВИЕ ТРЕБУЕТСЯ:
+→ Позвоните клиенту как можно скорее!
+→ Предложите пробное занятие
+→ Завершите регистрацию
+
+Время: {datetime.now().strftime("%d.%m.%Y %H:%M:%S")}'''
+    
+    url = 'https://api.vk.com/method/messages.send'
+    params = {
+        'access_token': VK_TOKEN,
+        'user_id': ADMIN_ID,
+        'message': text,
+        'v': '5.199',
+        'random_id': 0
+    }
+    
+    try:
+        response = requests.post(url, data=params, timeout=10)
+        response_data = response.json()
+        
+        if 'error' in response_data:
+            logger.error(f'❌ Ошибка отправки уведомления администратору: {response_data["error"]}')
+            return False
+        
+        logger.info(f'✅ Уведомление отправлено администратору (номер: {phone})')
+        return True
+    except Exception as e:
+        logger.error(f'❌ Ошибка отправки уведомления: {str(e)}')
+        return False
+
 def process_registration_step(user_id: int, step: int, message_text: str) -> Tuple[str, bool]:
     """
     Обрабатывает каждый этап регистрации
@@ -542,6 +614,10 @@ def process_registration_step(user_id: int, step: int, message_text: str) -> Tup
         
         user_registration_data[user_id]['parent_phone'] = result
         user_registration_data[user_id]['step'] = 7
+        
+        # Отправляем уведомление администратору о новом клиенте
+        send_admin_notification(user_id, result, user_registration_data[user_id])
+        
         return get_registration_step_7(), True
     
     elif step == 7:  # Выбор программы
@@ -672,6 +748,31 @@ def handle_user_message(user_id: int, message_text: str) -> None:
     elif 'спасибо' in msg:
         send_message(user_id, '😊 Пожалуйста! Чем я еще могу помочь?')
         return
+    
+    # Проверка на номер телефона (если пользователь просто пишет номер)
+    if re.search(r'\d{10,15}', message_text) and current_step == 0:
+        is_valid, result = validate_phone(message_text)
+        if is_valid:
+            # Сохраняем номер в данные пользователя
+            user_registration_data[user_id]['phone_only'] = result
+            
+            # Отправляем ответ пользователю
+            response_text = f'''✅ Спасибо! Номер телефона {result} получен!
+
+📞 Наш отдел заботы с вами свяжется в течение часа!
+
+🎓 Если у вас есть вопросы, напишите "программы" или "помощь"'''
+            
+            send_message(user_id, response_text)
+            
+            # Отправляем уведомление администратору
+            admin_data = {
+                'parent_name': 'Не указано',
+                'program_name': 'Интересуется общей информацией',
+                'child_name': 'Не указано'
+            }
+            send_admin_notification(user_id, result, admin_data)
+            return
     
     # Если ничего не подошло
     else:
