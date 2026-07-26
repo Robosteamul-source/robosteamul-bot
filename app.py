@@ -9,48 +9,68 @@ VK_SECRET = os.getenv('VK_SECRET', '')
 VK_CONFIRMATION_TOKEN = os.getenv('VK_CONFIRMATION_TOKEN', '43a38a83')
 
 PROGRAMS = {
-    'beginner': {
-        'name': 'Robotika dlya nachinayushchikh',
+    'robo_34': {
+        'name': 'Robototeknika RoboSTEAM',
+        'age': '3-4 goda',
+        'description': 'Pervye shagi v mir robototekniki. Razvitie logicheskogo myshleniya i melkoy motoriki.',
+        'price': '300 rub za zanyatie',
+        'short': 'robo_34'
+    },
+    'brick': {
+        'name': 'Robototeknika RoboSTEAM Brick',
+        'age': '5-6 let',
+        'description': 'Postroenie i programmirovanie robotov. Osnovy konstruirovaniya i algoritmiki.',
+        'price': '300 rub za zanyatie',
+        'short': 'brick'
+    },
+    'pro': {
+        'name': 'Robototeknika RoboSTEAM Pro',
         'age': '6-8 let',
-        'description': 'Vvedenie v osnovy robototekniki. Sborka prostykh konstruktsiy i pervye programmy na Scratch.',
-        'duration': '8 nedel',
-        'price': '4000 rub/mesyats'
+        'description': 'Prodvinutoe programmirovanie i sozdanie slozhnyh robotov. Uchastie v sorevnovaniyakh.',
+        'price': '400 rub za zanyatie',
+        'short': 'pro'
     },
-    'junior': {
-        'name': 'Junior Robotics',
-        'age': '9-11 let',
-        'description': 'Programmirovanie robotov LEGO Mindstorms. Reshenie zadach i uchastie v sorevnovaniyakh.',
-        'duration': '12 nedel',
-        'price': '5000 rub/mesyats'
+    'dance': {
+        'name': 'Horeografiya',
+        'age': '3-8 let',
+        'description': 'Razvitie tanca, ritma i koordinacii. Tvorcheskie nomera i vyestaleniya.',
+        'price': '350 rub za zanyatie',
+        'short': 'dance'
     },
-    'advanced': {
-        'name': 'Advanced Robotics',
-        'age': '12-15 let',
-        'description': 'Python programmirovanie. Rabota s Arduino i mikrokontrollerami. Sozdanie sobstvennykh proektov.',
-        'duration': '16 nedel',
-        'price': '6000 rub/mesyats'
+    'logoped': {
+        'name': 'Logoped i razvitie rechi',
+        'age': '3-7 let',
+        'description': 'Korrekciya zvukoporoiznosheniya i razvitie rechi. Individualnye zanyatiya.',
+        'price': '600 rub za zanyatie (diagnostika +800 rub)',
+        'short': 'logoped'
     },
-    'professional': {
-        'name': 'Pro Developer Track',
-        'age': '16+ let',
-        'description': 'Prodvinutaya robototeknika, mashinnoe obuchenie, IoT proekty. Podgotovka k ekzamenam.',
-        'duration': '24 nedeli',
-        'price': '7500 rub/mesyats'
+    'school_2': {
+        'name': 'Doshkolenok za dva goda do Shkoly',
+        'age': '4-5 let',
+        'description': 'Kompleksnaya podgotovka k shkole. Gramota, arifmetika, poznavatelno-rechevoe razvitie.',
+        'price': '350 rub za zanyatie',
+        'short': 'school_2'
+    },
+    'school_1': {
+        'name': 'Doshkolenok Za god do Shkoly',
+        'age': '6-7 let',
+        'description': 'Intensivnaya podgotovka v vypusknoy god. Osvoeniya shkol\'nykh navykov i samodisipliny.',
+        'price': '375 rub za zanyatie',
+        'short': 'school_1'
     }
 }
 
-def get_programs_info():
-    text = 'Programmy obucheniya RoboSTEAMuL:\n\n'
+def get_all_programs():
+    text = 'Vse programmy RoboSTEAM:\n\n'
     
     for key, program in PROGRAMS.items():
-        text += program['name'] + '\n'
-        text += 'Vozrast: ' + program['age'] + '\n'
-        text += program['description'] + '\n'
-        text += 'Prodolzhitelnost: ' + program['duration'] + '\n'
-        text += 'Stoimost: ' + program['price'] + '\n\n'
+        text += '1. ' + program['name'] + '\n'
+        text += '   Vozrast: ' + program['age'] + '\n'
+        text += '   Cena: ' + program['price'] + '\n\n'
     
-    text += "Napishite nazvanie: beginner, junior, advanced, professional\n"
-    text += "Ili 'kontakty' dlya informatsii o zapisi"
+    text += 'Napishite nazvanie ili nomer programmy dlya podrobnoy informacii.\n'
+    text += 'Naprimep: robo_34, brick, pro, dance, logoped, school_2, school_1\n'
+    text += "Ili 'kontakty' dlya zapisi"
     
     return text
 
@@ -58,24 +78,45 @@ def get_program_details(program_key):
     program = PROGRAMS.get(program_key.lower())
     
     if not program:
-        return 'Programma ne naidena. Poprobuite snova.'
+        return None
     
     text = program['name'] + '\n\n'
     text += 'Vozrast: ' + program['age'] + '\n'
-    text += 'Opisanie: ' + program['description'] + '\n'
-    text += 'Prodolzhitelnost kursa: ' + program['duration'] + '\n'
-    text += 'Stoimost: ' + program['price'] + '\n\n'
-    text += "Dlya zapisi svyazites s nami - napishite 'kontakty'"
+    text += 'Cena: ' + program['price'] + '\n\n'
+    text += 'Opisanie:\n' + program['description'] + '\n\n'
+    text += "Dlya zapisi ili voprosov napishite 'kontakty' ili 'zvonite'"
     
     return text
 
+def get_programs_by_age(age_text):
+    age_lower = age_text.lower().strip()
+    matching = []
+    
+    for key, program in PROGRAMS.items():
+        if age_lower in program['age'].lower():
+            matching.append(f"{program['name']} ({program['age']}) - {program['price']}")
+    
+    if not matching:
+        return 'Programmam dlya etogo vozrasta ne nayden. Napishite "programmy" dlya polnogo spiska.'
+    
+    text = 'Programmy dlya vozrasta ' + age_text + ':\n\n'
+    for prog in matching:
+        text += '- ' + prog + '\n'
+    
+    text += '\nNapishite nazvanie programmy dlya detaley'
+    return text
+
 def get_contacts():
-    text = 'Kontakty RoboSTEAMuL:\n\n'
-    text += 'Email: info@robosteamul.ru\n'
+    text = 'Kontakty RoboSTEAM:\n\n'
+    text += 'Email: info@robosteam.ru\n'
     text += 'Telefon: +7 (XXX) XXX-XX-XX\n'
-    text += 'Sait: www.robosteamul.ru\n'
-    text += 'Adres: g. Moskva\n\n'
-    text += 'Svyazites s nami dlya zapisi v gruppakh!'
+    text += 'Adres: Moskva\n'
+    text += 'Sait: www.robosteam.ru\n\n'
+    text += 'Dlya zapisi v gruppakh:\n'
+    text += '- Pishite nam v messenger\n'
+    text += '- Zvonite po telefonu\n'
+    text += '- Prihodite k nam v ofis\n\n'
+    text += 'Dostupna besplatnaya pervaya konsultaciya!'
     
     return text
 
@@ -99,18 +140,33 @@ def send_message(user_id, text):
 def handle_user_message(user_id, message_text):
     msg = message_text.lower().strip()
     
-    if 'programm' in msg or 'kurs' in msg or 'privet' in msg or 'hello' in msg:
-        response = get_programs_info()
-    elif msg in ['beginner', 'junior', 'advanced', 'professional']:
+    if 'programm' in msg or 'kurs' in msg or 'chto' in msg or 'kakiye' in msg:
+        response = get_all_programs()
+    
+    elif msg in ['robo_34', 'brick', 'pro', 'dance', 'logoped', 'school_2', 'school_1']:
         response = get_program_details(msg)
-    elif 'kontakt' in msg or 'zapis' in msg or 'telefon' in msg or 'email' in msg:
+    
+    elif 'kontakt' in msg or 'zapis' in msg or 'zvon' in msg or 'adres' in msg or 'email' in msg:
         response = get_contacts()
+    
+    elif 'vozrast' in msg or 'let' in msg or 'goda' in msg:
+        words = msg.split()
+        for word in words:
+            if word.isdigit():
+                age = word
+                response = get_programs_by_age(age)
+                send_message(user_id, response)
+                return
+        response = 'Ukazhite vozrast (naprimep: 5, 6, 7)'
+    
     else:
         response = 'Spasibo za vopros!\n\n'
         response += 'Napishite:\n'
         response += '- "programmy" dlya spiska vsekh kursov\n'
-        response += '- "beginner", "junior", "advanced" ili "professional" dlya detaley\n'
-        response += '- "kontakty" dlya informatsii o zapisi'
+        response += '- "robo_34", "brick", "pro", "dance", "logoped", "school_2", "school_1" dlya detaley\n'
+        response += '- vozrast (naprimep: 5 let) dlya programm po vozrastu\n'
+        response += '- "kontakty" dlya informacii o zapisi\n\n'
+        response += 'Ili zadayte lyuboy vopros - my postaraemsya pomoch!'
     
     send_message(user_id, response)
 
@@ -132,9 +188,13 @@ def callback():
         user_id = obj.get('user_id')
         
         if user_id:
-            greeting = 'Dobro pozhalovat v RoboSTEAMuL!\n\n'
-            greeting += 'My nauchim vashikh detey robototekniki i programmirovaniyu.\n\n'
-            greeting += 'Napishite "programmy" chtoby uznat o nashikh kursakh,\n'
+            greeting = 'Dobro pozhalovat v RoboSTEAM!\n\n'
+            greeting += 'My predlagaem 7 obrazovatelnyh programm dlya detey ot 3 do 8 let:\n'
+            greeting += '- Robototeknika\n'
+            greeting += '- Horeografiya\n'
+            greeting += '- Razvitie rechi\n'
+            greeting += '- Podgotovka k shkole\n\n'
+            greeting += 'Napishite "programmy" dlya polnogo spiska,\n'
             greeting += 'ili "kontakty" dlya zapisi.'
             send_message(user_id, greeting)
         
