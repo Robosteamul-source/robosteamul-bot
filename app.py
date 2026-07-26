@@ -10,47 +10,47 @@ VK_CONFIRMATION_TOKEN = os.getenv('VK_CONFIRMATION_TOKEN', '43a38a83')
 
 PROGRAMS = {
     'beginner': {
-        'name': 'Робоника для начинающих',
-        'age': '6-8 лет',
-        'description': 'Введение в основы робототехники. Сборка простых конструкций и первые программы на Scratch.',
-        'duration': '8 недель',
-        'price': '4000 руб/месяц'
+        'name': 'Robotika dlya nachinayushchikh',
+        'age': '6-8 let',
+        'description': 'Vvedenie v osnovy robototehniki. Sborka prostyh konstrukcij i pervye programmy na Scratch.',
+        'duration': '8 nedel',
+        'price': '4000 rub/mesyac'
     },
     'junior': {
         'name': 'Junior Robotics',
-        'age': '9-11 лет',
-        'description': 'Программирование роботов LEGO Mindstorms. Решение задач и участие в соревнованиях.',
-        'duration': '12 недель',
-        'price': '5000 руб/месяц'
+        'age': '9-11 let',
+        'description': 'Programmirovanie robotov LEGO Mindstorms. Reshenie zadach i uchastie v sorevnovaniyah.',
+        'duration': '12 nedel',
+        'price': '5000 rub/mesyac'
     },
     'advanced': {
         'name': 'Advanced Robotics',
-        'age': '12-15 лет',
-        'description': 'Python программирование. Работа с Arduino и микроконтроллерами. Создание собственных проектов.',
-        'duration': '16 недель',
-        'price': '6000 руб/месяц'
+        'age': '12-15 let',
+        'description': 'Python programmirovanie. Rabota s Arduino i mikrokontrollerami. Sozdanie sobstvennyh proektov.',
+        'duration': '16 nedel',
+        'price': '6000 rub/mesyac'
     },
     'professional': {
         'name': 'Pro Developer Track',
-        'age': '16+ лет',
-        'description': 'Продвинутая робототехника, машинное обучение, IoT проекты. Подготовка к экзаменам.',
-        'duration': '24 недели',
-        'price': '7500 руб/месяц'
+        'age': '16+ let',
+        'description': 'Prodvignutaya robototehnika, mashinnoe obuchenie, IoT proekty. Podgotovka k ekzamenam.',
+        'duration': '24 nedeli',
+        'price': '7500 rub/mesyac'
     }
 }
 
 def get_programs_info():
-    text = '📚 Программы обучения RoboSTEAMuL:\n\n'
+    text = 'Programmy obucheniya RoboSTEAMuL:\n\n'
     
     for key, program in PROGRAMS.items():
-        text += f"🤖 {program['name']}\n"
-        text += f"👶 Возраст: {program['age']}\n"
-        text += f"📝 {program['description']}\n"
-        text += f"⏱ Длительность: {program['duration']}\n"
-        text += f"💰 Стоимость: {program['price']}\n\n"
+        text += f"{program['name']}\n"
+        text += f"Vozrast: {program['age']}\n"
+        text += f"{program['description']}\n"
+        text += f"Dlitelnost: {program['duration']}\n"
+        text += f"Stoimost: {program['price']}\n\n"
     
-    text += "Напишите название программы для подробной информации (например: beginner, junior, advanced, professional)\n"
-    text += "Или напишите 'контакты' для получения информации о записи."
+    text += "Napishite nazvanie programmy dlya podrobnoy informacii (naprimep: beginner, junior, advanced, professional)\n"
+    text += "Ili napishite 'kontakty' dlya polucheniya informacii o zapisi."
     
     return text
 
@@ -60,22 +60,22 @@ def get_program_details(program_key):
     if not program:
         return None
     
-    text = f"📌 {program['name']}\n\n"
-    text += f"👶 Возраст: {program['age']}\n"
-    text += f"📝 Описание: {program['description']}\n"
-    text += f"⏱ Длительность курса: {program['duration']}\n"
-    text += f"💰 Стоимость: {program['price']}\n\n"
-    text += "Для записи свяжитесь с нами через форму обратной связи в сообществе или напишите 'контакты'"
+    text = f"{program['name']}\n\n"
+    text += f"Vozrast: {program['age']}\n"
+    text += f"Opisanie: {program['description']}\n"
+    text += f"Dlitelnost kursa: {program['duration']}\n"
+    text += f"Stoimost: {program['price']}\n\n"
+    text += "Dlya zapisi svyazites s nami cherez formu obratnoy svyazi v soobshchestve ili napishite 'kontakty'"
     
     return text
 
 def get_contacts():
-    text = "📞 Как с нами связаться:\n\n"
-    text += "📧 Email: info@robosteamul.ru\n"
-    text += "📱 Телефон: +7 (XXX) XXX-XX-XX\n"
-    text += "🌐 Сайт: www.robosteamul.ru\n"
-    text += "📍 Адрес: г. Москва\n\n"
-    text += "Оставьте заявку в сообществе - наш менеджер свяжется с вами в течение 24 часов!"
+    text = "Kak s nami svyazatsya:\n\n"
+    text += "Email: info@robosteamul.ru\n"
+    text += "Telefon: +7 (XXX) XXX-XX-XX\n"
+    text += "Sait: www.robosteamul.ru\n"
+    text += "Adres: g. Moskva\n\n"
+    text += "Ostavte zayavku v soobshchestve - nash menedzher svyazetsya s vami v techenie 24 chasov!"
     
     return text
 
@@ -99,28 +99,27 @@ def send_message(user_id, text):
 def handle_user_message(user_id, message_text):
     msg_lower = message_text.lower().strip()
     
-    if any(word in msg_lower for word in ['программ', 'обучени', 'курс', 'помощь', 'привет', 'hi', 'hello', 'список']):
+    if any(word in msg_lower for word in ['programm', 'obucheni', 'kurs', 'pomoshch', 'privet', 'hi', 'hello', 'spisok']):
         response = get_programs_info()
     
     elif msg_lower in ['beginner', 'junior', 'advanced', 'professional']:
         response = get_program_details(msg_lower)
     
-    elif any(word in msg_lower for word in ['контакт', 'связь', 'телефон', 'адрес', 'email', 'запис']):
+    elif any(word in msg_lower for word in ['kontakt', 'svyaz', 'telefon', 'adres', 'email', 'zapis']):
         response = get_contacts()
     
     else:
-        response = "👋 Спасибо за вопрос!\n\n"
-        response += "Напишите:\n"
-        response += "- 'программы' для списка всех курсов\n"
-        response += "- 'beginner', 'junior', 'advanced' или 'professional' для деталей курса\n"
-        response += "- 'контакты' для информации о записи\n\n"
-        response +=
+        response = "Spasibo za vopros!\n\n"
+        response += "Napishite:\n"
+        response += "- 'programmy' dlya spiska vsekh kursov\n"
+        response += "- 'beginner', 'junior', 'advanced' ili 'professional' dlya detaley kursa\n"
+        response += "- 'kontakty' dlya informacii o zapisi\n\n"
 robosteamul.ru. Доменное имя продаётся
 robosteamul.ru. Доменное имя продаётся
 robosteamul.ru
 
 
-ли задайте свой вопрос - мы постараемся помочь! 😊"
+nse += "Ili zadayte svoy vopros - my postaraemsya pomoct!"
     
     send_message(user_id, response)
 
@@ -142,7 +141,7 @@ def callback():
         user_id = obj.get('user_id')
         
         if user_id:
-            greeting = 'Добро пожаловать в RoboSTEAMuL! 🤖\n\nМы научим ваших детей робототехнике и программированию.\n\nНапишите "программы" чтобы узнать о наших курсах, или "контакты" для записи.'
+            greeting = 'Dobro pozhalovat v RoboSTEAMuL!\n\nMy nauchim vashikh detey robototekhnike i programmirovaniyu.\n\nNapishite "programmy" chtoby uznat o nashikh kursakh, ili "kontakty" dlya zapisi.'
             send_message(user_id, greeting)
         
         return 'ok', 200
@@ -166,8 +165,10 @@ def index():
     return {'status': 'ok'}, 200
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=False)"И
+    app.run(host='0.0.0.0', port=5000, debug=False) respo
 app.run - Данный веб-сайт выставлен на продажу! - app Ресурсы и информация.
 app.run
+
+
 
 
