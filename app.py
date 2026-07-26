@@ -143,42 +143,50 @@ def get_program_details(program_key):
 def get_registration_form():
     text = 'Отлично! Давайте запишем вашего ребенка на занятия.\n\n'
     text += 'Пожалуйста, ответьте на следующие вопросы:\n\n'
-    text += '1. Полное имя ребенка (ФИО)\n\n'
+    text += '🔹 ВОПРОС 1 из 7\n\n'
+    text += 'Полное имя ребенка (ФИО)\n\n'
     text += 'Напишите полное имя ребенка'
     return text
 
 def ask_child_age():
-    text = 'Спасибо! Теперь скажите:\n\n'
-    text += '2. Сколько лет вашему ребенку?\n\n'
+    text = 'Спасибо! Продолжаем:\n\n'
+    text += '🔹 ВОПРОС 2 из 7\n\n'
+    text += 'Сколько лет вашему ребенку?\n\n'
     text += 'Укажите возраст (например: 5 или 6)'
     return text
 
 def ask_kindergarten():
-    text = 'Спасибо! Продолжаем:\n\n'
-    text += '3. Название детского сада (если посещает)\n\n'
+    text = 'Хорошо! Далее:\n\n'
+    text += '🔹 ВОПРОС 3 из 7\n\n'
+    text += 'Название детского сада (если посещает)\n\n'
     text += 'Напишите название или "нет" если не посещает'
     return text
 
 def ask_group_number():
-    text = 'Спасибо! Теперь:\n\n'
-    text += '4. Номер группы в детском саду\n\n'
+    text = 'Продолжаем:\n\n'
+    text += '🔹 ВОПРОС 4 из 7\n\n'
+    text += 'Номер группы в детском саду\n\n'
     text += 'Напишите номер группы или "нет" если не посещает'
     return text
 
 def ask_parent_name():
-    text = 'Спасибо! Теперь:\n\n'
-    text += '5. Полное имя родителя (ФИО)\n\n'
+    text = 'Отлично! Еще вопросы:\n\n'
+    text += '🔹 ВОПРОС 5 из 7\n\n'
+    text += 'Полное имя родителя (ФИО)\n\n'
     text += 'Напишите ваше полное имя'
     return text
 
 def ask_parent_phone():
-    text = 'Спасибо! Теперь:\n\n'
-    text += '6. Номер телефона для связи\n\n'
+    text = 'Спасибо! Осталось:\n\n'
+    text += '🔹 ВОПРОС 6 из 7\n\n'
+    text += 'Номер телефона для связи\n\n'
     text += 'Напишите ваш номер телефона (например: +7 (921) 123-45-67)'
     return text
 
 def ask_program_choice():
-    text = 'Отлично! Какая программа вас интересует?\n\n'
+    text = 'Замечательно! Последний вопрос:\n\n'
+    text += '🔹 ВОПРОС 7 из 7\n\n'
+    text += 'Какая программа вас интересует?\n\n'
     text += 'Напишите один из кодов:\n'
     text += 'robo_34 - Робототехника 3-4 года (300 руб)\n'
     text += 'brick - РобоСТЕАМ Брик 5-6 лет (300 руб)\n'
@@ -190,19 +198,19 @@ def ask_program_choice():
     return text
 
 def confirm_registration(user_id, data):
-    text = 'Спасибо за регистрацию!\n\n'
+    text = '✅ РЕГИСТРАЦИЯ ЗАВЕРШЕНА!\n\n'
     text += 'Сведения о ребенке:\n'
-    text += 'ФИО ребенка: ' + data.get('child_name', 'Не указано') + '\n'
-    text += 'Возраст: ' + data.get('child_age', 'Не указано') + ' лет\n'
-    text += 'Детский сад: ' + data.get('kindergarten', 'Не указано') + '\n'
-    text += 'Номер группы: ' + data.get('group_number', 'Не указано') + '\n\n'
+    text += '📌 ФИО: ' + data.get('child_name', 'Не указано') + '\n'
+    text += '📌 Возраст: ' + data.get('child_age', 'Не указано') + ' лет\n'
+    text += '📌 Детский сад: ' + data.get('kindergarten', 'Не указано') + '\n'
+    text += '📌 Группа: ' + data.get('group_number', 'Не указано') + '\n\n'
     text += 'Сведения о родителе:\n'
-    text += 'ФИО родителя: ' + data.get('parent_name', 'Не указано') + '\n'
-    text += 'Телефон: ' + data.get('parent_phone', 'Не указано') + '\n\n'
+    text += '👤 ФИО: ' + data.get('parent_name', 'Не указано') + '\n'
+    text += '📞 Телефон: ' + data.get('parent_phone', 'Не указано') + '\n\n'
     text += 'Выбранная программа:\n'
-    text += 'Направление: ' + data.get('program_name', 'Не выбрано') + '\n'
-    text += 'Цена: ' + data.get('program_price', 'Не указана') + '\n\n'
-    text += 'Мы свяжемся с вами в течение 24 часов для подтверждения записи.\n\n'
+    text += '🎓 ' + data.get('program_name', 'Не выбрана') + '\n'
+    text += '💰 ' + data.get('program_price', 'Не указана') + '\n\n'
+    text += 'Мы свяжемся с вами в течение 24 часов!\n'
     text += 'Спасибо, что выбрали РобоСТЕАМ!'
     
     save_registration(user_id, data)
@@ -288,14 +296,9 @@ def handle_user_message(user_id, message_text):
     user_data = user_registration_data[user_id]
     current_step = user_data.get('step', 0)
     
-    if 'добрый день' in msg or 'добрый вечер' in msg or 'доброе утро' in msg or 'здравствуйте' in msg or msg == 'привет' or msg == 'здравствуй' or msg == 'привет!' or msg == 'здравствуйте!':
-        response = get_hello_response()
+    print('DEBUG: user_id=' + str(user_id) + ', step=' + str(current_step) + ', msg=' + msg)
     
-    elif 'запис' in msg:
-        user_registration_data[user_id] = {'step': 1}
-        response = get_registration_form()
-    
-    elif current_step == 1:
+    if current_step == 1:
         user_registration_data[user_id]['child_name'] = message_text
         user_registration_data[user_id]['step'] = 2
         response = ask_child_age()
@@ -338,6 +341,13 @@ def handle_user_message(user_id, message_text):
             user_registration_data[user_id]['step'] = 0
         else:
             response = 'Такой программы нет. Напишите правильный код:\nrobo_34, brick, pro, dance, logoped, school_2, school_1'
+    
+    elif 'запис' in msg:
+        user_registration_data[user_id] = {'step': 1}
+        response = get_registration_form()
+    
+    elif 'добрый день' in msg or 'добрый вечер' in msg or 'доброе утро' in msg or 'здравствуйте' in msg or msg == 'привет' or msg == 'здравствуй' or msg == 'привет!' or msg == 'здравствуйте!':
+        response = get_hello_response()
     
     elif 'программ' in msg or 'курс' in msg or 'что' in msg or 'какие' in msg:
         response = get_all_programs()
