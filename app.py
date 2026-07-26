@@ -62,7 +62,7 @@ PROGRAMS = {
 }
 
 def get_all_programs():
-    text = 'Все программы РобоСТЕАМ:\n\n'
+    text = 'Все программы компании RoboSTEAMuL:\n\n'
     
     text += '1. ' + PROGRAMS['robo_34']['name'] + '\n'
     text += '   Возраст: ' + PROGRAMS['robo_34']['age'] + '\n'
