@@ -1,105 +1,25 @@
-import vk_api
-from vk_api.longpoll import VkLongPoll, Event
-import requests
-import json
-
-# Ваши данные (замените на свои из Image 2)
-VK_TOKEN = "ваш_vk_token"  # Из переменной VK_TOKEN
-GROUP_ID = 192923833  # Ваш ID группы
-VK_SECRET_KEY = "ваш_secret_key"  # Из VK_SECRET_KEY
-
-class SubscriberGreeter:
-    def __init__(self, token, group_id):
-        self.vk = vk_api.VkApi(token=token)
-        self.group_id = group_id
-        self.longpoll = VkLongPoll(self.vk, group_id)
-    
-    def send_message(self, user_id, text):
-        """Отправить личное сообщение пользователю"""
-        try:
-            self.vk.method('messages.send', {
-                'user_id': user_id,
-                'message': text,
-                'random_id': 0
-            })
-            print(f"✓ Сообщение отправлено пользователю {user_id}")
-        except Exception as e:
-            print(f"✗ Ошибка при отправке: {e}")
-    
-    def greet_subscriber(self, user_id):
-        """Приветствие нового подписчика"""
-        greeting_text = """👋 Добро пожаловать в группу RoboSTEAMuL!
-
-Здесь вы найдете:
-🤖 Обновления о роботике
-💡 Полезные советы и уроки
-📚 Документацию и примеры кода
-🎯 Новости проектов
-
-Спасибо, что присоединились! 🚀"""
-        
-        self.send_message(user_id, greeting_text)
-    
-    def start_listening(self):
-        """Запустить слушание событий"""
-        print("🚀 Бот запущен и ожидает новых подписчиков...")
-        
-        for event in self.longpoll.listen():
-            if event.type == Event.USER_SUBSCRIBED:
-                user_id = event.user_id
-                print(f"📌 Новый подписчик: {user_id}")
-                self.greet_subscriber(user_id)
-
-# Запуск
-if __name__ == "__main__":
-    greeter = SubscriberGreeter(VK_TOKEN, GROUP_ID)
-    greeter.start_listening()
-
-
-Flask==2.3.0
-requests==2.31.0
-gunicorn==21.2.0
-
-
-web: gunicorn app:app
-
-
 from flask import Flask, request
 import requests
-import hmac
-import hashlib
 import os
-from dotenv import load_dotenv
-
-load_dotenv()
 
 app = Flask(__name__)
 
-# Переменные окружения (или установите прямо здесь для теста)
-VK_TOKEN = os.getenv('VK_TOKEN', 'ваш_vk_token')
-VK_SECRET = os.getenv('VK_SECRET', 'ваш_secret_key')
+VK_TOKEN = os.getenv('VK_TOKEN', '')
+VK_SECRET = os.getenv('VK_SECRET', '')
 VK_CONFIRMATION_TOKEN = os.getenv('VK_CONFIRMATION_TOKEN', '43a38a83')
 GROUP_ID = os.getenv('GROUP_ID', '192923833')
 
-def check_signature(body, secret):
-    """Проверка подписи от VK"""
-    try:
-        h = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
-        return h
-    except:
-        return None
-
 def send_greeting(user_id):
-    """Отправить приветствие новому подписчику"""
-    greeting_text = """👋 Добро пожаловать в RoboSTEAMuL!
+    """Send greeting message to new subscriber"""
+    message = """Hello, welcome to RoboSTEAMuL!
+    
+Here you will find:
+- Robotics updates
+- Useful tips and tutorials
+- Documentation and code examples
+- Project news
 
-Здесь вы найдете:
-🤖 Обновления о роботике
-💡 Полезные советы и уроки
-📚 Документацию и примеры кода
-🎯 Новости проектов
-
-Спасибо, что присоединились! 🚀"""
+Thank you for joining us!"""
     
     try:
         response = requests.post(
@@ -107,67 +27,46 @@ def send_greeting(user_id):
             {
                 'access_token': VK_TOKEN,
                 'user_id': user_id,
-                'message': greeting_text,
+                'message': message,
                 'v': '5.199',
                 'random_id': 0
             }
         )
-        if response.status_code == 200:
-            print(f"✓ Сообщение отправлено пользователю {user_id}")
-        else:
-            print(f"✗ Ошибка при отправке: {response.text}")
+        print(f"Message sent to user {user_id}")
     except Exception as e:
-        print(f"✗ Исключение: {e}")
+        print(f"Error: {e}")
 
 @app.route('/callback', methods=['POST'])
 def callback():
-    """Основной обработчик Callback API"""
+    """Handle VK Callback API events"""
     data = request.get_json()
     
     if data is None:
-        return 'Invalid request', 400
+        return 'ok', 200
     
-    # Проверка типа события
     event_type = data.get('type')
     
-    # Подтверждение сервера (при первой настройке)
     if event_type == 'confirmation':
-        print("✓ Confirmation event received")
+        print("Confirmation received")
         return VK_CONFIRMATION_TOKEN
     
-    # Обработка события подписки
-    if event_type == 'wall_post_new':
-        print("📝 New wall post")
-        return 'ok'
-    
     if event_type == 'user_subscribed':
-        print(f"🔔 New subscriber event received")
-        
         user_id = data.get('object', {}).get('user_id')
         if user_id:
-            print(f"👤 User ID: {user_id}")
+            print(f"New subscriber: {user_id}")
             send_greeting(user_id)
-        
         return 'ok'
     
-    # Для других типов событий
-    print(f"Event type: {event_type}")
-    return 'ok'
+    return 'ok', 200
 
 @app.route('/', methods=['GET'])
 def home():
-    """Главная страница для проверки что сервер работает"""
-    return {
-        'status': 'ok',
-        'bot': 'RoboSTEAMuL VK Bot',
-        'group_id': GROUP_ID
-    }, 200
-
-@app.route('/health', methods=['GET'])
-def health():
-    """Health check для Render"""
-    return {'status': 'healthy'}, 200
+    """Health check endpoint"""
+    return {'status': 'ok', 'bot': 'RoboSTEAMuL'}, 200
 
 if __name__ == '__main__':
-    # Для локального тестирования
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5000)
+app.run - Данный веб-сайт выставлен на продажу! - app Ресурсы и информация.
+app.run
+
+
