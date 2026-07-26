@@ -76,6 +76,19 @@ def get_greeting():
     text += 'или давайте запишем вашего ребенка на занятия!'
     return text
 
+def get_hello_response():
+    text = 'Добрый день! Рады вас видеть!\n\n'
+    text += 'Мы предлагаем 7 образовательных программ для детей от 3 до 8 лет:\n'
+    text += '- Робототехника РобоСТЕАМ (3-4 года) - 300 руб\n'
+    text += '- Робототехника РобоСТЕАМ Брик (5-6 лет) - 300 руб\n'
+    text += '- Робототехника РобоСТЕАМ Про (6-8 лет) - 400 руб\n'
+    text += '- Хореография (3-8 лет) - 350 руб\n'
+    text += '- Логопед и развитие речи (3-7 лет) - 600 руб\n'
+    text += '- Дошколёнок за два года до Школы (4-5 лет) - 350 руб\n'
+    text += '- Дошколёнок За год до Школы (6-7 лет) - 375 руб\n\n'
+    text += 'Напишите "запись" чтобы записать ребенка или "программы" для подробностей'
+    return text
+
 def get_all_programs():
     text = 'все программы компании RoboSTEAMuL:\n\n'
     
@@ -247,7 +260,10 @@ def handle_user_message(user_id, message_text):
     user_data = user_registration_data[user_id]
     current_step = user_data.get('step', 0)
     
-    if 'запис' in msg:
+    if 'добрый день' in msg or 'добрый вечер' in msg or 'доброе утро' in msg or 'здравствуйте' in msg or msg == 'привет' or msg == 'здравствуй' or msg == 'привет!' or msg == 'здравствуйте!':
+        response = get_hello_response()
+    
+    elif 'запис' in msg:
         user_registration_data[user_id] = {'step': 1}
         response = get_registration_form()
     
@@ -304,7 +320,8 @@ def handle_user_message(user_id, message_text):
         response += '- "программы" для списка всех курсов\n'
         response += '- "запись" для записи ребенка на занятия\n'
         response += '- возраст (например: 5 лет) для программ по возрасту\n'
-        response += '- "контакты" для информации о записи\n\n'
+        response += '- "контакты" для информации о записи\n'
+        response += '- или просто поздоровайтесь (добрый день, привет и т.д.)\n\n'
         response += 'Или задайте любой вопрос - мы постараемся помочь!'
     
     send_message(user_id, response)
