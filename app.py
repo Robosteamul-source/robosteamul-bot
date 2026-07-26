@@ -1,834 +1,558 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 """
-🤖 RoboSTEAMuL VK Bot - Улучшенная версия 2.0
-Функции: Приветствие, Программы, Филиалы, Цены, Контакты, Запись
-Бот отвечает только на входящие сообщения (без лишних отправок)
+RoboSTEAMuL VK Bot - Полная система управления группой
+Платформа: ВКонтакте (Callback API)
+Версия: 1.0
+Дата: 19 июля 2026
 """
 
-import os
-import logging
-from dotenv import load_dotenv
-from flask import Flask, request, jsonify
 import vk_api
+from vk_api.bot_longpoll import VkBotEventType, VkBotLongPoll
 from vk_api.utils import get_random_id
-from datetime import datetime
+import logging
 import sqlite3
+from datetime import datetime, timedelta
 import json
-from difflib import SequenceMatcher
+import re
+from typing import Dict, List, Optional
+import schedule
+import time
+from threading import Thread
 
-# ===== ЛОГГЕР =====
-logging.basicConfig(level=logging.INFO)
+# ==================== КОНФИГУРАЦИЯ ====================
+
+VK_GROUP_TOKEN = "your_group_token_here"
+VK_API_TOKEN = "your_api_token_here"
+GROUP_ID = 000000  # ID группы
+CALLBACK_SECRET = "your_secret_here"
+CALLBACK_CONFIRMATION_TOKEN = "your_confirmation_token"
+
+# ID специальных пользователей
+DIRECTOR_ID = 45815523  # Игорь Иванович
+ADMIN_ID = 441534266   # Наталья
+
+# ==================== ЛОГИРОВАНИЕ ====================
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('robosteanul_bot.log'),
+        logging.StreamHandler()
+    ]
+)
 logger = logging.getLogger(__name__)
 
-# ===== ПЕРЕМЕННЫЕ =====
-load_dotenv()
+# ==================== БАЗА ДАННЫХ ====================
 
-VK_TOKEN = os.getenv('VK_TOKEN')
-GROUP_ID = os.getenv('GROUP_ID')
-API_VERSION = os.getenv('API_VERSION', '5.131')
-VK_SECRET_KEY = os.getenv('VK_SECRET_KEY', '')
-VK_CONFIRMATION_CODE = os.getenv('VK_CONFIRMATION_CODE', '')
-
-# ===== ПРОВЕРКА =====
-if not VK_TOKEN or not GROUP_ID:
-    logger.error("❌ VK_TOKEN или GROUP_ID не установлены!")
-    raise ValueError("VK_TOKEN и GROUP_ID обязательны")
-
-logger.info("✅ VK_TOKEN загружен")
-logger.info(f"✅ GROUP_ID: {GROUP_ID}")
-
-# ===== FLASK =====
-app = Flask(__name__)
-
-# ===== БАЗА ДАННЫХ =====
-REGISTRATIONS_DB = 'registrations.db'
-
-def init_registrations_db():
-    """Инициализировать базу данных для записей"""
-    try:
-        conn = sqlite3.connect(REGISTRATIONS_DB)
+class Database:
+    def __init__(self, db_name='robosteanul.db'):
+        self.db_name = db_name
+        self.init_db()
+    
+    def init_db(self):
+        """Инициализация базы данных"""
+        conn = sqlite3.connect(self.db_name)
         c = conn.cursor()
         
-        c.execute('''
-            CREATE TABLE IF NOT EXISTS registrations (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                child_name TEXT NOT NULL,
-                child_age INTEGER NOT NULL,
-                program TEXT NOT NULL,
-                branch TEXT NOT NULL,
-                phone TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
+        # Таблица заявок
+        c.execute('''CREATE TABLE IF NOT EXISTS applications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            child_name TEXT,
+            child_birthday TEXT,
+            kindergarten_number TEXT,
+            group_number TEXT,
+            parent_name TEXT,
+            phone_number TEXT,
+            program TEXT,
+            status TEXT DEFAULT 'pending',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            notification_sent BOOLEAN DEFAULT 0
+        )''')
         
-        c.execute('''
-            CREATE TABLE IF NOT EXISTS user_state (
-                user_id INTEGER PRIMARY KEY,
-                state TEXT DEFAULT 'default',
-                registration_data TEXT,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
+        # Таблица истории сообщений
+        c.execute('''CREATE TABLE IF NOT EXISTS message_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            message TEXT,
+            message_type TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )''')
+        
+        # Таблица состояния диалога пользователя
+        c.execute('''CREATE TABLE IF NOT EXISTS user_state (
+            user_id INTEGER PRIMARY KEY,
+            state TEXT,
+            data TEXT,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )''')
+        
+        # Таблица обратной связи
+        c.execute('''CREATE TABLE IF NOT EXISTS feedback (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            feedback_text TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )''')
         
         conn.commit()
         conn.close()
-        logger.info("✅ База данных записей инициализирована")
-    except Exception as e:
-        logger.error(f"❌ Ошибка инициализации БД: {e}")
+    
+    def save_application(self, user_id: int, data: dict) -> bool:
+        """Сохранить заявку на программу"""
+        conn = sqlite3.connect(self.db_name)
+        c = conn.cursor()
+        
+        try:
+            c.execute('''INSERT INTO applications 
+                        (user_id, child_name, child_birthday, kindergarten_number, 
+                         group_number, parent_name, phone_number, program)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+                      (user_id, data.get('child_name'), data.get('child_birthday'),
+                       data.get('kindergarten_number'), data.get('group_number'),
+                       data.get('parent_name'), data.get('phone_number'),
+                       data.get('program')))
+            conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error saving application: {e}")
+            return False
+        finally:
+            conn.close()
+    
+    def get_user_state(self, user_id: int) -> tuple:
+        """Получить состояние диалога пользователя"""
+        conn = sqlite3.connect(self.db_name)
+        c = conn.cursor()
+        
+        c.execute('SELECT state, data FROM user_state WHERE user_id = ?', (user_id,))
+        result = c.fetchone()
+        conn.close()
+        
+        if result:
+            return result[0], json.loads(result[1]) if result[1] else {}
+        return None, {}
+    
+    def set_user_state(self, user_id: int, state: str, data: dict = None):
+        """Установить состояние диалога пользователя"""
+        conn = sqlite3.connect(self.db_name)
+        c = conn.cursor()
+        
+        data_json = json.dumps(data) if data else None
+        
+        c.execute('''INSERT OR REPLACE INTO user_state (user_id, state, data, updated_at)
+                     VALUES (?, ?, ?, CURRENT_TIMESTAMP)''',
+                  (user_id, state, data_json))
+        conn.commit()
+        conn.close()
+    
+    def get_pending_applications(self) -> List[dict]:
+        """Получить незакрытые заявки"""
+        conn = sqlite3.connect(self.db_name)
+        c = conn.cursor()
+        
+        c.execute('''SELECT * FROM applications WHERE status = 'pending' ''')
+        columns = [description[0] for description in c.description]
+        results = c.fetchall()
+        conn.close()
+        
+        return [dict(zip(columns, row)) for row in results]
+    
+    def mark_notification_sent(self, app_id: int):
+        """Отметить, что уведомление отправлено"""
+        conn = sqlite3.connect(self.db_name)
+        c = conn.cursor()
+        
+        c.execute('UPDATE applications SET notification_sent = 1 WHERE id = ?', (app_id,))
+        conn.commit()
+        conn.close()
 
-# ===== VK API =====
-vk = None
-try:
-    vk_session = vk_api.VkApi(token=VK_TOKEN)
-    vk = vk_session.get_api()
-    logger.info("✅ VK API успешно инициализирован")
-except Exception as e:
-    logger.error(f"❌ Ошибка VK API: {e}")
+# ==================== БАЗА ЗНАНИЙ О ПРОГРАММАХ ====================
 
-# ===== БОТ ИНФОРМАЦИЯ =====
-BOT_NAME = "RoboSTEAMuL Bot"
-BOT_VERSION = "2.0 Pro"
-SCHOOL_WEBSITE = "robosteamul.com"
-SCHOOL_EMAIL = "info@robosteamul.com"
-
-# ===== КОНТАКТЫ =====
-CONTACTS = {
-    'phone_1': {
-        'name': 'Наталья',
-        'number': '+7 (922) 014-44-94'
+PROGRAMS_DB = {
+    'робототехника robosteanul': {
+        'name': 'Робототехника РобоСТЕАМ',
+        'age': '3-4 года',
+        'price': '300 ₽',
+        'description': 'Введение в основы робототехники для самых маленьких'
     },
-    'phone_2': {
-        'name': 'Ксения',
-        'number': '+7 (904) 805-25-61'
+    'робототехника brick': {
+        'name': 'Робототехника РобоСТЕАМ Брик',
+        'age': '5-6 лет',
+        'price': '300 ₽',
+        'description': 'Продвинутое обучение с использованием кирпичных конструкторов'
     },
-    'phone_3': {
-        'name': 'Жанна',
-        'number': '+7 (951) 239-86-49'
+    'робототехника про': {
+        'name': 'Робототехника РобоСТЕАМ Про',
+        'age': '6-8 лет',
+        'price': '400 ₽',
+        'description': 'Профессиональный уровень робототехники'
+    },
+    'хореография': {
+        'name': 'Хореография',
+        'age': '3-8 лет',
+        'price': '350 ₽',
+        'description': 'Развитие координации и творчества через танец'
+    },
+    'логопед': {
+        'name': 'Логопед и развитие речи',
+        'age': '3-7 лет',
+        'price': '600 ₽ (+800 ₽ диагностика)',
+        'description': 'Коррекция речи и развитие коммуникативных навыков'
+    },
+    'дошколёнок два года': {
+        'name': 'Дошколёнок за два года до Школы',
+        'age': '4-5 лет',
+        'price': '350 ₽',
+        'description': 'Подготовка к школе для детей 4-5 лет'
+    },
+    'дошколёнок год': {
+        'name': 'Дошколёнок За год до Школы',
+        'age': '6-7 лет',
+        'price': '375 ₽',
+        'description': 'Интенсивная подготовка к школе для детей 6-7 лет'
     }
 }
 
-WORK_SCHEDULE = {
-    'weekdays': 'Пн-Пт',
-    'time': '09:00-18:00',
-    'weekends': 'Выходные'
-}
+# ==================== VK БОТ ====================
 
-# ===== ФИЛИАЛЫ =====
-BRANCHES_LIST = [
-    {'name': 'ДОУ №30', 'programs': ['Робототехника', 'Хореография']},
-    {'name': 'ДОУ №30СП', 'programs': ['Робототехника', 'Хореография']},
-    {'name': 'ДОУ №10 Копейск', 'programs': ['Робототехника']},
-    {'name': 'ДОУ №18СП', 'programs': ['Робототехника']},
-    {'name': 'ДОУ №24 Копейск', 'programs': ['Робототехника']},
-    {'name': 'ДОУ №44', 'programs': ['Робототехника', 'Хореография']},
-    {'name': 'ДОУ №44СП', 'programs': ['Хореография']},
-    {'name': 'ДОУ №48', 'programs': ['Робототехника']},
-    {'name': 'ДОУ №66', 'programs': ['Хореография']},
-    {'name': 'ДОУ №66СП', 'programs': ['Робототехника']},
-    {'name': 'ДОУ №221СП', 'programs': ['Робототехника', 'Хореография']},
-    {'name': 'ДОУ №339', 'programs': ['Робототехника']},
-    {'name': 'ДОУ №351', 'programs': ['Робототехника']},
-    {'name': 'ДОУ №366', 'programs': ['Робототехника']},
-    {'name': 'ДОУ №369', 'programs': ['Робототехника']},
-    {'name': 'ДОУ №413', 'programs': ['Робототехника']},
-    {'name': 'ДОУ №416', 'programs': ['Робототехника']},
-    {'name': 'ДОУ №418', 'programs': ['Робототехника', 'Хореография']},
-    {'name': 'ДОУ №421', 'programs': ['Робототехника']},
-    {'name': 'ДОУ №428', 'programs': ['Робототехника']},
-    {'name': 'ДОУ №444', 'programs': ['Робототехника', 'Хореография']},
-    {'name': 'ДОУ №448', 'programs': ['Робототехника']},
-    {'name': 'ДОУ №448СП', 'programs': ['Робототехника', 'Хореография']},
-    {'name': 'ДОУ №450', 'programs': ['Робототехника']},
-    {'name': 'ДОУ №475', 'programs': ['Робототехника', 'Хореография']},
-    {'name': 'Гимназия №76', 'programs': ['Робототехника']}
-]
-
-# ===== ПРОГРАММЫ =====
-PROGRAMS_INFO = {
-    'robosteam': {
-        'name': '🤖 РобоSTEAM (3-4 года)',
-        'age': '3-4 года',
-        'price': '300 руб./занятие',
-        'duration': '30 минут',
-    },
-    'brik': {
-        'name': '🧱 РобоSTEAM Брик (5-6 лет)',
-        'age': '5-6 лет',
-        'price': '300 руб./занятие',
-        'duration': '60 минут',
-    },
-    'pro': {
-        'name': '⚙️ РобоSTEAM Про (6-8 лет)',
-        'age': '6-8 лет',
-        'price': '400 руб./занятие',
-        'duration': '60 минут',
-    },
-    'choreography': {
-        'name': '💃 Хореография (3-8 лет)',
-        'age': '3-8 лет',
-        'price': '350 руб./занятие',
-        'duration': '30-60 минут',
-    },
-    'doshkolenok_1': {
-        'name': '👶 Дошколёнок - Подготовка к школе (4-5 лет)',
-        'age': '4-5 лет',
-        'price': '400 руб./занятие',
-        'duration': '60 минут',
-    },
-    'doshkolenok_2': {
-        'name': '👶 Дошколёнок - Подготовка к школе (6-7 лет)',
-        'age': '6-7 лет',
-        'price': '400 руб./занятие',
-        'duration': '60 минут',
-    },
-    'logoped': {
-        'name': '🗣️ Логопед (3-7 лет)',
-        'age': '3-7 лет',
-        'price': '600 руб./занятие',
-        'duration': '60 минут',
-    },
-    'diagnostics': {
-        'name': '📋 Диагностика',
-        'age': '3-7 лет',
-        'price': '800 руб.',
-        'duration': 'Одно обследование',
-    },
-}
-
-# ===== ФУНКЦИИ БАЗЫ ДАННЫХ =====
-
-def get_user_state(user_id):
-    """Получить состояние пользователя"""
-    try:
-        conn = sqlite3.connect(REGISTRATIONS_DB)
-        c = conn.cursor()
-        c.execute('SELECT state, registration_data FROM user_state WHERE user_id = ?', (user_id,))
-        row = c.fetchone()
-        conn.close()
+class RoboSTEAMuLBot:
+    def __init__(self, group_token: str, api_token: str, group_id: int):
+        self.vk_session = vk_api.VkApi(token=group_token)
+        self.vk = self.vk_session.get_api()
+        self.vk_api_session = vk_api.VkApi(token=api_token)
+        self.vk_api = self.vk_api_session.get_api()
+        self.group_id = group_id
+        self.longpoll = VkBotLongPoll(self.vk_session, group_id)
+        self.db = Database()
         
-        if row:
-            return row[0], json.loads(row[1]) if row[1] else {}
-        return 'default', {}
-    except Exception as e:
-        logger.error(f"❌ Ошибка получения состояния: {e}")
-        return 'default', {}
-
-def set_user_state(user_id, state, data=None):
-    """Установить состояние пользователя"""
-    try:
-        conn = sqlite3.connect(REGISTRATIONS_DB)
-        c = conn.cursor()
-        data_json = json.dumps(data) if data else '{}'
-        
-        c.execute('''
-            INSERT OR REPLACE INTO user_state (user_id, state, registration_data, updated_at)
-            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-        ''', (user_id, state, data_json))
-        
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        logger.error(f"❌ Ошибка установки состояния: {e}")
-
-def save_registration(user_id, child_name, child_age, program, branch, phone):
-    """Сохранить запись в БД"""
-    try:
-        conn = sqlite3.connect(REGISTRATIONS_DB)
-        c = conn.cursor()
-        
-        c.execute('''
-            INSERT INTO registrations (user_id, child_name, child_age, program, branch, phone)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (user_id, child_name, child_age, program, branch, phone))
-        
-        conn.commit()
-        conn.close()
-        logger.info(f"✅ Запись сохранена для пользователя {user_id}")
-        return True
-    except Exception as e:
-        logger.error(f"❌ Ошибка сохранения записи: {e}")
-        return False
-
-# ===== ФУНКЦИИ ОТПРАВКИ =====
-
-def send_message(user_id, message):
-    """Отправить сообщение"""
-    if not vk:
-        logger.error("❌ VK API не инициализирован")
-        return False
+        logger.info("RoboSTEAMuL Bot initialized")
     
-    try:
-        logger.info(f"📤 Отправляю сообщение пользователю {user_id}")
-        vk.messages.send(
-            user_id=user_id,
-            message=message,
-            random_id=get_random_id(),
-            v=API_VERSION
-        )
-        logger.info(f"✅ Сообщение отправлено пользователю {user_id}")
-        return True
-    except Exception as e:
-        logger.error(f"❌ Ошибка отправки: {e}")
-        return False
-
-# ===== ФУНКЦИИ ПРИВЕТСТВИЯ =====
-
-def get_greeting():
-    """Приветствие в зависимости от времени суток"""
-    current_hour = datetime.now().hour
-    
-    # Определяем время суток
-    if 5 <= current_hour < 12:
-        greeting = """🌅 Доброе утро!
-
-Рады видеть вас в RoboSTEAMuL! 👋
-
-Мы помогаем детям 3-8 лет развивать творчество и логику.
-
-⏰ Режим работы компании:
-• Пн-Пт: 09:00-18:00
-• Сб-Вс: Выходные
-• 🤖 Чат-бот отвечает 24/7
-
-Что вас интересует?
-• программы - наши курсы
-• филиалы - выберите ближайший центр
-• цены - стоимость занятий
-• контакты - как записаться"""
-    
-    elif 12 <= current_hour < 17:
-        greeting = """🌤️ Добрый день!
-
-Добро пожаловать в RoboSTEAMuL! 👋
-
-Мы помогаем детям 3-8 лет развивать творчество и логику.
-
-⏰ Режим работы компании:
-• Пн-Пт: 09:00-18:00
-• Сб-Вс: Выходные
-• 🤖 Чат-бот отвечает 24/7
-
-Что вас интересует?
-• программы - наши курсы
-• филиалы - выберите ближайший центр
-• цены - стоимость занятий
-• контакты - как записаться"""
-    
-    elif 17 <= current_hour < 21:
-        greeting = """🌆 Добрый вечер!
-
-Добро пожаловать в RoboSTEAMuL! 🤖
-
-Мы помогаем детям 3-8 лет развивать творчество и логику.
-
-⏰ Режим работы компании:
-• Пн-Пт: 09:00-18:00
-• Сб-Вс: Выходные
-• 🤖 Чат-бот отвечает 24/7
-
-Что вас интересует?
-• программы - наши курсы
-• филиалы - выберите ближайший центр
-• цены - стоимость занятий
-• контакты - как записаться"""
-    
-    else:
-        greeting = """🌙 Добрый ночи!
-
-Добро пожаловать в RoboSTEAMuL! 🤖
-
-Мы помогаем детям 3-8 лет развивать творчество и логику.
-Наш чат-бот отвечает 24/7!
-
-⏰ Режим работы компании:
-• Пн-Пт: 09:00-18:00
-• Сб-Вс: Выходные
-• 🤖 Чат-бот отвечает 24/7
-
-Что вас интересует?
-• программы - наши курсы
-• филиалы - выберите ближайший центр
-• цены - стоимость занятий
-• контакты - как записаться"""
-    
-    return greeting
-
-# ===== ФУНКЦИИ МЕНЮ =====
-
-def get_programs():
-    """Список программ"""
-    response = """📚 НАШИ ПРОГРАММЫ:
-
-🤖 РобоSTEAM (3-4 года)
-   Возраст: 3-4 года | Время: 30 минут | Цена: 300 руб./занятие
-
-🧱 РобоSTEAM Брик (5-6 лет)
-   Возраст: 5-6 лет | Время: 60 минут | Цена: 300 руб./занятие
-
-⚙️ РобоSTEAM Про (6-8 лет)
-   Возраст: 6-8 лет | Время: 60 минут | Цена: 400 руб./занятие
-
-💃 Хореография (3-8 лет)
-   Возраст: 3-8 лет | Время: 30-60 минут | Цена: 350 руб./занятие
-
-👶 Дошколёнок - Подготовка к школе (4-5 лет)
-   Возраст: 4-5 лет | Время: 60 минут | Цена: 400 руб./занятие
-
-👶 Дошколёнок - Подготовка к школе (6-7 лет)
-   Возраст: 6-7 лет | Время: 60 минут | Цена: 400 руб./занятие
-
-🗣️ Логопед (3-7 лет)
-   Возраст: 3-7 лет | Время: 60 минут | Цена: 600 руб./занятие
-
-📋 Диагностика
-   Возраст: 3-7 лет | Цена: 800 руб.
-
-👉 Напишите 'записаться' для регистрации!"""
-    
-    return response
-
-def get_prices():
-    """Таблица цен"""
-    response = """💰 ТАБЛИЦА ЦЕН:
-
-🤖 РобоSTEAM (3-4 года) - 300 руб./занятие (30 мин)
-🧱 РобоSTEAM Брик (5-6 лет) - 300 руб./занятие (60 мин)
-⚙️ РобоSTEAM Про (6-8 лет) - 400 руб./занятие (60 мин)
-💃 Хореография (3-8 лет) - 350 руб./занятие (30-60 мин)
-👶 Дошколёнок (4-5 лет) - 400 руб./занятие (60 мин)
-👶 Дошколёнок (6-7 лет) - 400 руб./занятие (60 мин)
-🗣️ Логопед (3-7 лет) - 600 руб./занятие (60 мин)
-📋 Диагностика - 800 руб.
-
-ℹ️ Первое занятие БЕСПЛАТНО! 🎁
-
-📞 Вопросы о ценах? Свяжитесь с нами:
-Наталья: +7 (922) 014-44-94
-Ксения: +7 (904) 805-25-61
-Жанна: +7 (951) 239-86-49"""
-    
-    return response
-
-def get_contacts():
-    """Контактная информация"""
-    response = """📞 НАШИ КОНТАКТЫ:
-
-👩‍💼 Наталья: +7 (922) 014-44-94
-👩‍💼 Ксения: +7 (904) 805-25-61
-👩‍💼 Жанна: +7 (951) 239-86-49
-
-📧 Email: info@robosteamul.com
-🌐 Сайт: robosteamul.com
-
-⏰ Режим работы:
-• Пн-Пт: 09:00-18:00
-• Сб-Вс: Выходные
-• 🤖 Чат-бот отвечает 24/7
-
-✅ Готовы к записи? Напишите 'записаться'"""
-    
-    return response
-
-def get_branches():
-    """Список филиалов"""
-    response = "📍 НАШИ ФИЛИАЛЫ:\n\n"
-    
-    for i, branch in enumerate(BRANCHES_LIST, 1):
-        response += f"{i}. {branch['name']}\n"
-    
-    response += f"\n👉 Напишите номер (1-{len(BRANCHES_LIST)}) или название филиала"
-    
-    return response
-
-# ===== ФУНКЦИИ ЗАПИСИ =====
-
-def start_registration(user_id):
-    """Начало записи"""
-    set_user_state(user_id, 'waiting_child_name', {})
-    
-    response = """✏️ ЗАПИСЬ НА ЗАНЯТИЕ
-
-Спасибо за интерес! 😊
-
-Давайте оформим вашу запись.
-
-1️⃣ Как зовут вашего ребенка? (Просто напишите имя)
-
-Или напишите 'отмена' для отмены записи"""
-    
-    return response
-
-def find_similar_word(word, word_list, threshold=0.6):
-    """Поиск похожего слова"""
-    best_match = None
-    best_ratio = threshold
-    
-    for w in word_list:
-        ratio = SequenceMatcher(None, word, w).ratio()
-        if ratio > best_ratio:
-            best_ratio = ratio
-            best_match = w
-    
-    return best_match
-
-def handle_registration(user_id, text, state, data):
-    """Обработка процесса записи"""
-    text_lower = text.lower().strip()
-    
-    if state == 'waiting_child_name':
-        data['child_name'] = text
-        set_user_state(user_id, 'waiting_child_age', data)
-        
-        return f"""✅ Спасибо, {text}!
-
-2️⃣ Сколько лет вашему ребенку? (Напишите число, например: 5)"""
-    
-    elif state == 'waiting_child_age':
+    def send_message(self, peer_id: int, message: str, keyboard=None):
+        """Отправить сообщение"""
         try:
-            age = int(text_lower)
-            if 2 <= age <= 10:
-                data['child_age'] = age
-                set_user_state(user_id, 'waiting_program', data)
-                
-                programs_list = "3️⃣ Какую программу вы выбираете?\n\n"
-                for i, (key, prog) in enumerate(PROGRAMS_INFO.items(), 1):
-                    programs_list += f"{i}. {prog['name']} ({prog['duration']})\n"
-                
-                programs_list += f"\n👉 Напишите номер программы (1-{len(PROGRAMS_INFO)})"
-                
-                return programs_list
-            else:
-                return "❌ Возраст должен быть от 2 до 10 лет. Попробуйте еще раз:"
-        except ValueError:
-            return "❌ Пожалуйста, введите число. Например: 5"
+            params = {
+                'peer_id': peer_id,
+                'message': message,
+                'random_id': get_random_id(),
+            }
+            if keyboard:
+                params['keyboard'] = json.dumps(keyboard)
+            
+            self.vk.messages.send(**params)
+            logger.info(f"Message sent to {peer_id}")
+        except Exception as e:
+            logger.error(f"Error sending message: {e}")
     
-    elif state == 'waiting_program':
+    def get_user_info(self, user_id: int) -> dict:
+        """Получить информацию о пользователе"""
         try:
-            if text_lower.isdigit():
-                num = int(text_lower)
-                programs_list = list(PROGRAMS_INFO.values())
+            user_info = self.vk.users.get(user_ids=user_id)[0]
+            return user_info
+        except Exception as e:
+            logger.error(f"Error getting user info: {e}")
+            return {}
+    
+    def handle_join_event(self, event):
+        """Обработка вступления в группу"""
+        user_id = event.object.user_id
+        
+        greeting_message = """👋 Добро пожаловать в RoboSTEAMuL!
+
+Мы предлагаем 7 образовательных программ для детей:
+
+🤖 Робототехника РобоСТЕАМ (3-4 года) - 300 ₽
+🎯 Робототехника РобоСТЕАМ Брик (5-6 лет) - 300 ₽
+⚙️ Робототехника РобоСТЕАМ Про (6-8 лет) - 400 ₽
+💃 Хореография (3-8 лет) - 350 ₽
+🗣️ Логопед и развитие речи (3-7 лет) - 600 ₽ + диагностика
+📚 Дошколёнок за два года до школы (4-5 лет) - 350 ₽
+📖 Дошколёнок за год до школы (6-7 лет) - 375 ₽
+
+Напишите название интересующей вас программы или нажмите на один из вариантов!"""
+        
+        self.send_message(user_id, greeting_message)
+        logger.info(f"User {user_id} joined the group")
+    
+    def handle_leave_event(self, event):
+        """Обработка выхода из группы"""
+        user_id = event.object.user_id
+        
+        feedback_message = """😢 Нам очень жаль, что вы уходите! 
+
+Можете ли вы рассказать, почему вы решили отписаться? Ваша обратная связь помогает нам улучшаться."""
+        
+        # Отправляем только в том случае, если сможем получить информацию о пользователе
+        try:
+            self.vk.messages.send(
+                peer_id=user_id,
+                message=feedback_message,
+                random_id=get_random_id()
+            )
+        except:
+            pass  # Пользователь уже вышел, сообщение не отправится
+        
+        logger.info(f"User {user_id} left the group")
+    
+    def handle_message(self, event):
+        """Основная обработка сообщений"""
+        user_id = event.object.message['from_id']
+        text = event.object.message['text'].lower()
+        
+        user_state, user_data = self.db.get_user_state(user_id)
+        
+        # Специальные команды для директора
+        if user_id == DIRECTOR_ID:
+            if text in ['сводка', '/сводка', 'дневная сводка']:
+                self.send_daily_report(user_id)
+                return
+        
+        # Специальные команды для администратора
+        if user_id == ADMIN_ID:
+            if text in ['/заявки', 'заявки']:
+                self.send_applications_report(user_id)
+                return
+        
+        # Обработка записи на программу
+        if 'запис' in text or user_state == 'recording_program':
+            self.handle_program_registration(user_id, text, user_state, user_data)
+            return
+        
+        # Обработка вопросов о программах
+        if any(program_key in text for program_key in PROGRAMS_DB.keys()):
+            self.handle_program_inquiry(user_id, text)
+            return
+        
+        # Поиск программы по ключевым словам
+        for key, program in PROGRAMS_DB.items():
+            if key in text:
+                response = f"""📋 {program['name']}
                 
-                if 1 <= num <= len(programs_list):
-                    program = programs_list[num - 1]
-                    data['program'] = program['name']
-                    set_user_state(user_id, 'waiting_branch', data)
+Возраст: {program['age']}
+Цена: {program['price']}
+Описание: {program['description']}
+
+Хотите записаться на эту программу? Напишите 'запись' или нажмите кнопку ниже."""
+                
+                self.send_message(user_id, response)
+                return
+        
+        # Стандартный ответ
+        default_response = """Привет! 👋 
+        
+Я здесь, чтобы помочь вам узнать о наших программах. 
+Какую программу вас интересует? Напишите название или выберите из списка:
+- Робототехника
+- Хореография  
+- Логопед
+- Дошколёнок"""
+        
+        self.send_message(user_id, default_response)
+    
+    def handle_program_inquiry(self, user_id: int, text: str):
+        """Ответ на вопрос о программе"""
+        matched_program = None
+        
+        for key, program in PROGRAMS_DB.items():
+            if key in text:
+                matched_program = program
+                break
+        
+        if matched_program:
+            response = f"""📋 {matched_program['name']}
+            
+✅ Возраст: {matched_program['age']}
+💰 Цена: {matched_program['price']}
+ℹ️ {matched_program['description']}
+
+Вы хотите записать ребенка на эту программу? 
+Ответьте 'да' и заполните анкету!"""
+            
+            self.send_message(user_id, response)
+    
+    def handle_program_registration(self, user_id: int, text: str, 
+                                   user_state: Optional[str], user_data: dict):
+        """Обработка процесса записи на программу"""
+        
+        # Шаг 1: Выбор программы
+        if not user_state or user_state == 'start':
+            self.send_message(user_id, "🎓 Какую программу выбираете?")
+            for key, program in PROGRAMS_DB.items():
+                msg = f"• {program['name']} ({program['age']})"
+                self.send_message(user_id, msg)
+            self.db.set_user_state(user_id, 'choose_program', {})
+            return
+        
+        # Шаг 2: Запрос имени ребенка
+        if user_state == 'choose_program':
+            user_data['program'] = text
+            self.send_message(user_id, "👧 Как зовут вашего ребенка?")
+            self.db.set_user_state(user_id, 'enter_child_name', user_data)
+            return
+        
+        # Шаг 3: Дата рождения
+        if user_state == 'enter_child_name':
+            user_data['child_name'] = text
+            self.send_message(user_id, "📅 Дата рождения ребенка (ДД.MM.ГГГГ)?")
+            self.db.set_user_state(user_id, 'enter_birthday', user_data)
+            return
+        
+        # Шаг 4: Номер детского сада
+        if user_state == 'enter_birthday':
+            user_data['child_birthday'] = text
+            self.send_message(user_id, "🏢 Номер детского сада?")
+            self.db.set_user_state(user_id, 'enter_kindergarten', user_data)
+            return
+        
+        # Шаг 5: Номер группы
+        if user_state == 'enter_kindergarten':
+            user_data['kindergarten_number'] = text
+            self.send_message(user_id, "👥 Номер группы?")
+            self.db.set_user_state(user_id, 'enter_group', user_data)
+            return
+        
+        # Шаг 6: ФИО родителя
+        if user_state == 'enter_group':
+            user_data['group_number'] = text
+            self.send_message(user_id, "👨‍👩‍👧 ФИО родителя?")
+            self.db.set_user_state(user_id, 'enter_parent_name', user_data)
+            return
+        
+        # Шаг 7: Номер телефона
+        if user_state == 'enter_parent_name':
+            user_data['parent_name'] = text
+            self.send_message(user_id, "📱 Номер телефона?")
+            self.db.set_user_state(user_id, 'enter_phone', user_data)
+            return
+        
+        # Шаг 8: Обработка номера телефона
+        if user_state == 'enter_phone':
+            phone_match = re.search(r'\d{10,}', text.replace(' ', '').replace('-', '').replace('+', ''))
+            
+            if phone_match:
+                user_data['phone_number'] = phone_match.group()
+                
+                # Сохранить заявку
+                if self.db.save_application(user_id, user_data):
+                    confirmation = f"""✅ Спасибо! Ваша заявка принята!
+
+📋 Данные:
+Ребенок: {user_data.get('child_name')}
+Дата рождения: {user_data.get('child_birthday')}
+Детский сад: {user_data.get('kindergarten_number')}
+Группа: {user_data.get('group_number')}
+Родитель: {user_data.get('parent_name')}
+Телефон: {user_data.get('phone_number')}
+Программа: {user_data.get('program')}
+
+Мы свяжемся с вами в ближайшее время!"""
                     
-                    branches_response = "4️⃣ Выберите филиал:\n\n"
-                    for i, branch in enumerate(BRANCHES_LIST, 1):
-                        branches_response += f"{i}. {branch['name']}\n"
+                    self.send_message(user_id, confirmation)
                     
-                    branches_response += f"\n👉 Напишите номер филиала (1-{len(BRANCHES_LIST)})"
+                    # Отправить уведомление администратору
+                    self.send_admin_notification(user_id, user_data)
                     
-                    return branches_response
+                    # Очистить состояние
+                    self.db.set_user_state(user_id, None, {})
                 else:
-                    return f"❌ Номер должен быть от 1 до {len(PROGRAMS_INFO)}. Попробуйте еще раз:"
-        except ValueError:
-            pass
-        
-        return "❌ Пожалуйста, выберите программу по номеру"
+                    self.send_message(user_id, "❌ Ошибка при сохранении заявки. Попробуйте позже.")
+            else:
+                self.send_message(user_id, "📱 Пожалуйста, введите корректный номер телефона")
     
-    elif state == 'waiting_branch':
-        if text_lower.isdigit():
+    def send_admin_notification(self, user_id: int, user_data: dict):
+        """Отправить уведомление администратору о новой заявке"""
+        try:
+            user_info = self.get_user_info(user_id)
+            profile_link = f"https://vk.com/id{user_id}"
+            
+            notification = f"""📬 НОВАЯ ЗАЯВКА!
+
+Родитель: {user_info.get('first_name', '')} {user_info.get('last_name', '')}
+Профиль: {profile_link}
+
+Ребенок: {user_data.get('child_name')}
+Дата рождения: {user_data.get('child_birthday')}
+Детский сад: {user_data.get('kindergarten_number')}
+Группа: {user_data.get('group_number')}
+ФИО родителя: {user_data.get('parent_name')}
+Телефон: {user_data.get('phone_number')}
+Программа: {user_data.get('program')}"""
+            
+            self.send_message(ADMIN_ID, notification)
+            logger.info(f"Admin notification sent for user {user_id}")
+        except Exception as e:
+            logger.error(f"Error sending admin notification: {e}")
+    
+    def send_daily_report(self, director_id: int):
+        """Отправить ежедневную сводку директору"""
+        try:
+            pending_apps = self.db.get_pending_applications()
+            
+            report = f"""📊 ЕЖЕДНЕВНАЯ СВОДКА
+Дата: {datetime.now().strftime('%d.%m.%Y %H:%M')}
+
+📝 Новые заявки: {len(pending_apps)}
+"""
+            
+            if pending_apps:
+                report += "\nДетали:\n"
+                for app in pending_apps:
+                    report += f"""
+• {app['child_name']} - {app['program']}
+  Родитель: {app['parent_name']}
+  Телефон: {app['phone_number']}
+  Статус: {app['status']}"""
+            
+            self.send_message(director_id, report)
+            logger.info(f"Daily report sent to director {director_id}")
+        except Exception as e:
+            logger.error(f"Error sending daily report: {e}")
+    
+    def send_applications_report(self, admin_id: int):
+        """Отправить отчет о заявках администратору"""
+        try:
+            pending_apps = self.db.get_pending_applications()
+            
+            report = f"""📋 ОТЧЕТ О ЗАЯВКАХ
+Дата: {datetime.now().strftime('%d.%m.%Y %H:%M')}
+
+Всего заявок: {len(pending_apps)}
+"""
+            
+            for app in pending_apps:
+                report += f"""
+
+🔹 ID: {app['id']}
+   Ребенок: {app['child_name']}
+   Родитель: {app['parent_name']}
+   Телефон: {app['phone_number']}
+   Программа: {app['program']}
+   Статус: {app['status']}"""
+            
+            self.send_message(admin_id, report)
+        except Exception as e:
+            logger.error(f"Error sending applications report: {e}")
+    
+    def run(self):
+        """Запустить бота"""
+        logger.info("Bot started listening...")
+        
+        for event in self.longpoll.listen():
             try:
-                num = int(text_lower)
-                if 1 <= num <= len(BRANCHES_LIST):
-                    branch = BRANCHES_LIST[num - 1]
-                    data['branch'] = branch['name']
-                    set_user_state(user_id, 'waiting_phone', data)
-                    
-                    return f"""✅ Выбран филиал: {branch['name']}
-
-5️⃣ И последнее - ваш номер телефона? 📱
-
-Форма: +7 (XXX) XXX-XX-XX"""
-                else:
-                    return f"❌ Номер филиала должен быть от 1 до {len(BRANCHES_LIST)}"
-            except ValueError:
-                return "❌ Пожалуйста, введите номер филиала"
-        
-        # Поиск по названию
-        text_lower = text.lower()
-        for branch in BRANCHES_LIST:
-            if text_lower in branch['name'].lower():
-                data['branch'] = branch['name']
-                set_user_state(user_id, 'waiting_phone', data)
+                if event.type == VkBotEventType.MESSAGE_NEW:
+                    self.handle_message(event)
                 
-                return f"""✅ Выбран филиал: {branch['name']}
-
-5️⃣ И последнее - ваш номер телефона? 📱
-
-Форма: +7 (XXX) XXX-XX-XX"""
-        
-        suggestion = find_similar_word(text_lower, [b['name'] for b in BRANCHES_LIST], 0.65)
-        if suggestion:
-            return f"🤔 Вы имели в виду: {suggestion}?\n\nНапишите его номер или полное название:"
-        
-        return f"🤔 Филиал '{text}' не найден 😕\n\nНапишите номер (1-{len(BRANCHES_LIST)}) или название филиала:"
-    
-    elif state == 'waiting_phone':
-        data['phone'] = text
-        
-        # Сохраняем запись
-        if save_registration(
-            user_id,
-            data.get('child_name'),
-            data.get('child_age'),
-            data.get('program'),
-            data.get('branch'),
-            data.get('phone')
-        ):
-            set_user_state(user_id, 'default', {})
-            
-            confirmation = f"""🎉🎉🎉 ЗАПИСЬ УСПЕШНО ПОДТВЕРЖДЕНА! 🎉🎉🎉
-
-Спасибо, что выбрали RoboSTEAMuL! 💙
-
-Вот краткая информация вашей записи:
-
-👶 Ребенок: {data.get('child_name')} ✨
-🎂 Возраст: {data.get('child_age')} лет 🎈
-🎯 Программа: {data.get('program')} 🚀
-📍 Филиал: {data.get('branch')} 🏫
-📱 Телефон: {data.get('phone')} ☎️
-
-⏰ Что дальше?
-🔔 Мы позвоним вам в течение 24 часов!
-✅ Первое занятие БЕСПЛАТНО! 🎁
-
-📞 Если у вас есть вопросы:
-• Наталья: +7 (922) 014-44-94
-• Ксения: +7 (904) 805-25-61
-• Жанна: +7 (951) 239-86-49
-
-💪 Спасибо за доверие! До скорого! 🚀"""
-            
-            return confirmation
-        else:
-            set_user_state(user_id, 'default', {})
-            return "⚠️ Ой! Ошибка при сохранении записи 😕\n\nПожалуйста, попробуйте позже или позвоните нам напрямую:\n+7 (922) 014-44-94"
-    
-    return "🤔 Что-то пошло не так... Напишите 'записаться' 📝 чтобы начать заново!"
-
-def handle_message(text, user_id):
-    """Обработка сообщения"""
-    text_lower = text.lower().strip()
-    
-    logger.info(f"📨 Сообщение от {user_id}: '{text}'")
-    
-    # Проверяем состояние пользователя
-    state, data = get_user_state(user_id)
-    
-    # Если пользователь в процессе записи
-    if state != 'default':
-        # Если захотел отменить
-        if text_lower in ['отмена', 'cancel', 'нет']:
-            set_user_state(user_id, 'default', {})
-            return "❌ Запись отменена.\n\nНапишите 'привет' для меню"
-        
-        # Обработать запись
-        return handle_registration(user_id, text, state, data)
-    
-    # Приветствие
-    if text_lower in ['привет', 'hi', 'hello', 'привет!', 'хай', 'начать', 
-                      'добрый день', 'доброе утро', 'добрый вечер', 'добрая ночь',
-                      'здравствуйте', 'здравствуй', 'пока', 'привет привет', 'меню']:
-        return get_greeting()
-    
-    # Программы
-    elif text_lower in ['программы', 'programs', 'курсы', 'обучение', 'программа']:
-        return get_programs()
-    
-    # Филиалы
-    elif text_lower in ['филиалы', 'branches', 'где', 'адреса', 'центры', 'филиал']:
-        return get_branches()
-    
-    # Цены
-    elif text_lower in ['цены', 'price', 'стоимость', 'сколько', 'цена']:
-        return get_prices()
-    
-    # Контакты
-    elif text_lower in ['контакты', 'contacts', 'телефон', 'phone', 'звоните', 'контакт']:
-        return get_contacts()
-    
-    # Запись на занятие
-    elif text_lower in ['записаться', 'запись', 'register', 'запись на занятие', 'хочу записаться']:
-        return start_registration(user_id)
-    
-    # Выбор филиала по номеру
-    elif text_lower.isdigit():
-        try:
-            num = int(text_lower)
-            if 1 <= num <= len(BRANCHES_LIST):
-                branch = BRANCHES_LIST[num - 1]
-                response = f"""✅ ВЫБРАН: {branch['name']}
-
-📚 ДОСТУПНЫЕ ПРОГРАММЫ:
-"""
-                for prog in branch['programs']:
-                    response += f"• {prog}\n"
+                elif event.type == VkBotEventType.USER_JOIN:
+                    self.handle_join_event(event)
                 
-                response += f"""\n📞 ДЛЯ ЗАПИСИ:
-{get_contacts()}"""
-                return response
-            else:
-                return f"❌ Номер неверный. Укажите от 1 до {len(BRANCHES_LIST)}"
-        except ValueError:
-            logger.error(f"Ошибка преобразования номера: {text_lower}")
-    
-    # Поиск по названию филиала
-    elif any(kw in text_lower for kw in ['доу', 'гимназия', 'школа']):
-        for branch in BRANCHES_LIST:
-            if text_lower in branch['name'].lower():
-                response = f"""✅ ВЫБРАН: {branch['name']}
-
-📚 ДОСТУПНЫЕ ПРОГРАММЫ:
-"""
-                for prog in branch['programs']:
-                    response += f"• {prog}\n"
-                
-                response += f"""\n📞 ДЛЯ ЗАПИСИ:
-{get_contacts()}"""
-                return response
-        
-        return f"❌ Филиал не найден\n\nНапишите 'филиалы' для полного списка"
-    
-    # По умолчанию - попытка найти похожую команду
-    else:
-        commands = ['программы', 'филиалы', 'цены', 'контакты', 'записаться']
-        similar_command = find_similar_word(text_lower, commands, threshold=0.65)
-        
-        if similar_command:
-            return f"""🤔 Вы имели в виду: '{similar_command}'?
-
-📌 Доступные команды:
-• программы 📚 - наши курсы
-• филиалы 📍 - где заниматься  
-• цены 💰 - стоимость занятий
-• контакты 📞 - как записаться
-• записаться ✏️ - начать запись на занятие
-• привет ☀️ - главное меню"""
-        
-        return """🤔 Мм, я вас не совсем понял! 😊
-
-Что вас интересует? Напишите:
-
-📚 программы - наши курсы
-📍 филиалы - где заниматься  
-💰 цены - стоимость занятий
-📞 контакты - как записаться
-✏️ записаться - начать запись на занятие
-🎉 привет - главное меню
-
-Или просто напишите что-нибудь из этого! 👆"""
-
-# ===== FLASK ROUTES =====
-
-@app.route('/', methods=['GET'])
-def home():
-    """Главная страница"""
-    logger.info("✅ Запрос к главной странице")
-    return jsonify({
-        'status': 'running',
-        'bot': BOT_NAME,
-        'version': BOT_VERSION,
-        'timestamp': datetime.now().isoformat()
-    })
-
-@app.route('/health', methods=['GET'])
-def health():
-    """Проверка здоровья"""
-    return jsonify({
-        'status': 'healthy',
-        'bot': BOT_NAME
-    }), 200
-
-@app.route('/callback', methods=['POST'])
-def callback():
-    """Обработчик вебхуков от VK - БОТ ОТВЕЧАЕТ ТОЛЬКО НА ВХОДЯЩИЕ СООБЩЕНИЯ"""
-    try:
-        data = request.json
-        
-        if not data:
-            logger.warning("⚠️ Пустой запрос")
-            return jsonify({'ok': True}), 200
-        
-        logger.info(f"📩 Вебхук получен: {data.get('type')}")
-        
-        if VK_SECRET_KEY and data.get('secret') != VK_SECRET_KEY:
-            logger.warning("⚠️ Неверный секретный ключ")
-            return jsonify({'ok': True}), 200
-        
-        event_type = data.get('type')
-        
-        if event_type == 'confirmation':
-            logger.info("✅ Confirmation request")
-            return VK_CONFIRMATION_CODE, 200
-        
-        # БОТ ОТВЕЧАЕТ ТОЛЬКО НА message_new
-        if event_type == 'message_new':
-            message = data.get('object', {}).get('message', {})
-            user_id = message.get('from_id')
-            text = message.get('text', '')
+                elif event.type == VkBotEventType.USER_LEAVE:
+                    self.handle_leave_event(event)
             
-            # Игнорируем сообщения от сервисов и пустые
-            if user_id < 0:
-                logger.info("ℹ️ Сообщение от сервиса, игнорируем")
-                return jsonify({'ok': True}), 200
-            
-            if not text or not text.strip():
-                logger.info("ℹ️ Пустое сообщение, игнорируем")
-                return jsonify({'ok': True}), 200
-            
-            logger.info(f"📨 Сообщение от {user_id}: {text}")
-            response = handle_message(text, user_id)
-            send_message(user_id, response)
-        
-        return jsonify({'ok': True}), 200
-    
-    except Exception as e:
-        logger.error(f"❌ Ошибка в callback: {e}", exc_info=True)
-        return jsonify({'ok': True}), 200
+            except Exception as e:
+                logger.error(f"Error handling event: {e}")
 
-@app.route('/stats', methods=['GET'])
-def stats():
-    """Статистика"""
-    return jsonify({
-        'bot': BOT_NAME,
-        'version': BOT_VERSION,
-        'group_id': GROUP_ID,
-        'branches': len(BRANCHES_LIST),
-        'programs': len(PROGRAMS_INFO),
-        'status': 'active'
-    })
+# ==================== ЗАПУСК ====================
 
-@app.errorhandler(404)
-def not_found(error):
-    logger.warning("⚠️ 404 Not Found")
-    return jsonify({'error': 'Endpoint not found'}), 404
-
-@app.errorhandler(500)
-def server_error(error):
-    logger.error(f"❌ 500 Server Error: {error}")
-    return jsonify({'error': 'Internal server error'}), 500
-
-# ===== MAIN =====
-
-if __name__ == '__main__':
-    init_registrations_db()
-    
-    port = int(os.getenv('PORT', 8080))
-    logger.info(f"🚀 Запуск {BOT_NAME} v{BOT_VERSION}")
-    logger.info(f"🔗 http://0.0.0.0:{port}")
-    logger.info(f"📍 Филиалов: {len(BRANCHES_LIST)}")
-    logger.info(f"📚 Программ: {len(PROGRAMS_INFO)}")
-    logger.info("⚠️ БОТ ОТВЕЧАЕТ ТОЛЬКО НА ВХОДЯЩИЕ СООБЩЕНИЯ (нет лишних отправок)")
-    
-    app.run(
-        host='0.0.0.0',
-        port=port,
-        debug=False,
-        use_reloader=False
-    )
+if __name__ == "__main__":
+    bot = RoboSTEAMuLBot(VK_GROUP_TOKEN, VK_API_TOKEN, GROUP_ID)
+    bot.run()
