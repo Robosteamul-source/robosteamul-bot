@@ -1,558 +1,270 @@
-"""
-RoboSTEAMuL VK Bot - Полная система управления группой
-Платформа: ВКонтакте (Callback API)
-Версия: 1.0
-Дата: 19 июля 2026
-"""
+const express = require('express');
+const crypto = require('crypto');
+require('dotenv').config();
 
-import vk_api
-from vk_api.bot_longpoll import VkBotEventType, VkBotLongPoll
-from vk_api.utils import get_random_id
-import logging
-import sqlite3
-from datetime import datetime, timedelta
-import json
-import re
-from typing import Dict, List, Optional
-import schedule
-import time
-from threading import Thread
+const app = express();
+app.use(express.json());
 
-# ==================== КОНФИГУРАЦИЯ ====================
+// База знаний программ
+const programs = [
+  {
+    id: 1,
+    name: 'Робототехника РобоСТЕАМ',
+    age: '3-4 года',
+    price: 300,
+    description: 'Первый уровень робототехники для самых маленьких'
+  },
+  {
+    id: 2,
+    name: 'Робототехника РобоСТЕАМ Брик',
+    age: '5-6 лет',
+    price: 300,
+    description: 'Второй уровень с более сложными конструкциями'
+  },
+  {
+    id: 3,
+    name: 'Робототехника РобоСТЕАМ Про',
+    age: '6-8 лет',
+    price: 400,
+    description: 'Продвинутый уровень робототехники'
+  },
+  {
+    id: 4,
+    name: 'Хореография',
+    age: '3-8 лет',
+    price: 350,
+    description: 'Танцевальное развитие и физическая координация'
+  },
+  {
+    id: 5,
+    name: 'Логопед и развитие речи',
+    age: '3-7 лет',
+    price: 600,
+    diagnostic: 800,
+    description: 'Логопедические занятия и развитие речи (диагностика +800 ₽)'
+  },
+  {
+    id: 6,
+    name: 'Дошколёнок за два года до Школы',
+    age: '4-5 лет',
+    price: 350,
+    description: 'Подготовка к школе для детей 4-5 лет'
+  },
+  {
+    id: 7,
+    name: 'Дошколёнок За год до Школы',
+    age: '6-7 лет',
+    price: 375,
+    description: 'Интенсивная подготовка за год до школы'
+  }
+];
 
-VK_GROUP_TOKEN = "your_group_token_here"
-VK_API_TOKEN = "your_api_token_here"
-GROUP_ID = 000000  # ID группы
-CALLBACK_SECRET = "your_secret_here"
-CALLBACK_CONFIRMATION_TOKEN = "your_confirmation_token"
+// Функция отправки сообщения в ВК
+async function sendVKMessage(userId, message) {
+  const messageToSend = {
+    user_id: userId,
+    message: message,
+    random_id: Math.floor(Math.random() * 1000000)
+  };
 
-# ID специальных пользователей
-DIRECTOR_ID = 45815523  # Игорь Иванович
-ADMIN_ID = 441534266   # Наталья
+  try {
+    const response = await fetch('https://api.vk.com/method/messages.send', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: new URLSearchParams({
+        ...messageToSend,
+        access_token: process.env.VK_TOKEN,
+        v: '5.131'
+      })
+    });
 
-# ==================== ЛОГИРОВАНИЕ ====================
-
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('robosteanul_bot.log'),
-        logging.StreamHandler()
-    ]
-)
-logger = logging.getLogger(__name__)
-
-# ==================== БАЗА ДАННЫХ ====================
-
-class Database:
-    def __init__(self, db_name='robosteanul.db'):
-        self.db_name = db_name
-        self.init_db()
-    
-    def init_db(self):
-        """Инициализация базы данных"""
-        conn = sqlite3.connect(self.db_name)
-        c = conn.cursor()
-        
-        # Таблица заявок
-        c.execute('''CREATE TABLE IF NOT EXISTS applications (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            child_name TEXT,
-            child_birthday TEXT,
-            kindergarten_number TEXT,
-            group_number TEXT,
-            parent_name TEXT,
-            phone_number TEXT,
-            program TEXT,
-            status TEXT DEFAULT 'pending',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            notification_sent BOOLEAN DEFAULT 0
-        )''')
-        
-        # Таблица истории сообщений
-        c.execute('''CREATE TABLE IF NOT EXISTS message_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            message TEXT,
-            message_type TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )''')
-        
-        # Таблица состояния диалога пользователя
-        c.execute('''CREATE TABLE IF NOT EXISTS user_state (
-            user_id INTEGER PRIMARY KEY,
-            state TEXT,
-            data TEXT,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )''')
-        
-        # Таблица обратной связи
-        c.execute('''CREATE TABLE IF NOT EXISTS feedback (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER,
-            feedback_text TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )''')
-        
-        conn.commit()
-        conn.close()
-    
-    def save_application(self, user_id: int, data: dict) -> bool:
-        """Сохранить заявку на программу"""
-        conn = sqlite3.connect(self.db_name)
-        c = conn.cursor()
-        
-        try:
-            c.execute('''INSERT INTO applications 
-                        (user_id, child_name, child_birthday, kindergarten_number, 
-                         group_number, parent_name, phone_number, program)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
-                      (user_id, data.get('child_name'), data.get('child_birthday'),
-                       data.get('kindergarten_number'), data.get('group_number'),
-                       data.get('parent_name'), data.get('phone_number'),
-                       data.get('program')))
-            conn.commit()
-            return True
-        except Exception as e:
-            logger.error(f"Error saving application: {e}")
-            return False
-        finally:
-            conn.close()
-    
-    def get_user_state(self, user_id: int) -> tuple:
-        """Получить состояние диалога пользователя"""
-        conn = sqlite3.connect(self.db_name)
-        c = conn.cursor()
-        
-        c.execute('SELECT state, data FROM user_state WHERE user_id = ?', (user_id,))
-        result = c.fetchone()
-        conn.close()
-        
-        if result:
-            return result[0], json.loads(result[1]) if result[1] else {}
-        return None, {}
-    
-    def set_user_state(self, user_id: int, state: str, data: dict = None):
-        """Установить состояние диалога пользователя"""
-        conn = sqlite3.connect(self.db_name)
-        c = conn.cursor()
-        
-        data_json = json.dumps(data) if data else None
-        
-        c.execute('''INSERT OR REPLACE INTO user_state (user_id, state, data, updated_at)
-                     VALUES (?, ?, ?, CURRENT_TIMESTAMP)''',
-                  (user_id, state, data_json))
-        conn.commit()
-        conn.close()
-    
-    def get_pending_applications(self) -> List[dict]:
-        """Получить незакрытые заявки"""
-        conn = sqlite3.connect(self.db_name)
-        c = conn.cursor()
-        
-        c.execute('''SELECT * FROM applications WHERE status = 'pending' ''')
-        columns = [description[0] for description in c.description]
-        results = c.fetchall()
-        conn.close()
-        
-        return [dict(zip(columns, row)) for row in results]
-    
-    def mark_notification_sent(self, app_id: int):
-        """Отметить, что уведомление отправлено"""
-        conn = sqlite3.connect(self.db_name)
-        c = conn.cursor()
-        
-        c.execute('UPDATE applications SET notification_sent = 1 WHERE id = ?', (app_id,))
-        conn.commit()
-        conn.close()
-
-# ==================== БАЗА ЗНАНИЙ О ПРОГРАММАХ ====================
-
-PROGRAMS_DB = {
-    'робототехника robosteanul': {
-        'name': 'Робототехника РобоСТЕАМ',
-        'age': '3-4 года',
-        'price': '300 ₽',
-        'description': 'Введение в основы робототехники для самых маленьких'
-    },
-    'робототехника brick': {
-        'name': 'Робототехника РобоСТЕАМ Брик',
-        'age': '5-6 лет',
-        'price': '300 ₽',
-        'description': 'Продвинутое обучение с использованием кирпичных конструкторов'
-    },
-    'робототехника про': {
-        'name': 'Робототехника РобоСТЕАМ Про',
-        'age': '6-8 лет',
-        'price': '400 ₽',
-        'description': 'Профессиональный уровень робототехники'
-    },
-    'хореография': {
-        'name': 'Хореография',
-        'age': '3-8 лет',
-        'price': '350 ₽',
-        'description': 'Развитие координации и творчества через танец'
-    },
-    'логопед': {
-        'name': 'Логопед и развитие речи',
-        'age': '3-7 лет',
-        'price': '600 ₽ (+800 ₽ диагностика)',
-        'description': 'Коррекция речи и развитие коммуникативных навыков'
-    },
-    'дошколёнок два года': {
-        'name': 'Дошколёнок за два года до Школы',
-        'age': '4-5 лет',
-        'price': '350 ₽',
-        'description': 'Подготовка к школе для детей 4-5 лет'
-    },
-    'дошколёнок год': {
-        'name': 'Дошколёнок За год до Школы',
-        'age': '6-7 лет',
-        'price': '375 ₽',
-        'description': 'Интенсивная подготовка к школе для детей 6-7 лет'
+    const data = await response.json();
+    if (data.error) {
+      console.error('VK API Error:', data.error);
     }
+  } catch (error) {
+    console.error('Error sending message:', error);
+  }
 }
 
-# ==================== VK БОТ ====================
+// Функция поиска подходящих программ по возрасту
+function findProgramsByAge(age) {
+  return programs.filter(program => {
+    const [minAge, maxAge] = program.age.split('-').map(a => parseInt(a));
+    return age >= minAge && age <= maxAge;
+  });
+}
 
-class RoboSTEAMuLBot:
-    def __init__(self, group_token: str, api_token: str, group_id: int):
-        self.vk_session = vk_api.VkApi(token=group_token)
-        self.vk = self.vk_session.get_api()
-        self.vk_api_session = vk_api.VkApi(token=api_token)
-        self.vk_api = self.vk_api_session.get_api()
-        self.group_id = group_id
-        self.longpoll = VkBotLongPoll(self.vk_session, group_id)
-        self.db = Database()
-        
-        logger.info("RoboSTEAMuL Bot initialized")
+// Функция генерации ответа
+function generateResponse(text, userId) {
+  const lowerText = text.toLowerCase().trim();
+  
+  let response = '';
+
+  // Обработка разных типов запросов
+  if (lowerText.includes('привет') || lowerText.includes('привет') || lowerText.includes('начало')) {
+    response = `👋 Добро пожаловать в консультацию по образовательным программам!\n\n` +
+      `🎓 Я могу помочь вам с информацией о:\n` +
+      `• Возрастных группах\n` +
+      `• Ценах на занятия\n` +
+      `• Описании программ\n\n` +
+      `📝 Напишите:\n` +
+      `"Мне 5 лет" - для подходящих программ\n` +
+      `"Программы" - для списка всех программ\n` +
+      `"Цены" - для информации о стоимости`;
+  }
+  
+  else if (lowerText.includes('программ')) {
+    response = '📚 Все наши образовательные программы:\n\n';
+    programs.forEach((prog, index) => {
+      response += `${index + 1}. ${prog.name}\n   Возраст: ${prog.age}\n   Цена: ${prog.price} ₽`;
+      if (prog.diagnostic) {
+        response += ` (диагностика +${prog.diagnostic} ₽)`;
+      }
+      response += '\n\n';
+    });
+  }
+  
+  else if (lowerText.includes('цен') || lowerText.includes('стоимост')) {
+    response = '💰 Стоимость занятий:\n\n';
+    const prices = {};
+    programs.forEach(prog => {
+      if (!prices[prog.price]) {
+        prices[prog.price] = [];
+      }
+      prices[prog.price].push(prog.name);
+    });
     
-    def send_message(self, peer_id: int, message: str, keyboard=None):
-        """Отправить сообщение"""
-        try:
-            params = {
-                'peer_id': peer_id,
-                'message': message,
-                'random_id': get_random_id(),
-            }
-            if keyboard:
-                params['keyboard'] = json.dumps(keyboard)
-            
-            self.vk.messages.send(**params)
-            logger.info(f"Message sent to {peer_id}")
-        except Exception as e:
-            logger.error(f"Error sending message: {e}")
+    Object.keys(prices).sort().forEach(price => {
+      response += `${price} ₽: ${prices[price].join(', ')}\n`;
+    });
     
-    def get_user_info(self, user_id: int) -> dict:
-        """Получить информацию о пользователе"""
-        try:
-            user_info = self.vk.users.get(user_ids=user_id)[0]
-            return user_info
-        except Exception as e:
-            logger.error(f"Error getting user info: {e}")
-            return {}
-    
-    def handle_join_event(self, event):
-        """Обработка вступления в группу"""
-        user_id = event.object.user_id
-        
-        greeting_message = """👋 Добро пожаловать в RoboSTEAMuL!
+    response += '\n💡 Логопед и развитие речи: 600 ₽/занятие + 800 ₽ диагностика';
+  }
+  
+  else if (/(\d+)\s*(?:лет|год|года)/.test(lowerText) || /мне\s*(\d+)/.test(lowerText)) {
+    const ageMatch = lowerText.match(/(\d+)\s*(?:лет|год|года|мне)/);
+    if (ageMatch) {
+      const age = parseInt(ageMatch[1]);
+      const suitable = findProgramsByAge(age);
+      
+      if (suitable.length > 0) {
+        response = `✨ Программы для ${age} лет:\n\n`;
+        suitable.forEach((prog, index) => {
+          response += `${index + 1}. ${prog.name}\n   ${prog.description}\n   Цена: ${prog.price} ₽`;
+          if (prog.diagnostic) {
+            response += ` (+${prog.diagnostic} ₽ диагностика)`;
+          }
+          response += '\n\n';
+        });
+      } else {
+        response = `❌ К сожалению, для возраста ${age} лет нет подходящих программ.\n\n` +
+          `Наши программы рассчитаны на детей от 3 до 8 лет.`;
+      }
+    }
+  }
+  
+  else if (lowerText.includes('робот')) {
+    const robotics = programs.filter(p => p.name.includes('Робототехника'));
+    response = '🤖 Программы робототехники:\n\n';
+    robotics.forEach(prog => {
+      response += `${prog.name}\n   Возраст: ${prog.age}\n   Цена: ${prog.price} ₽\n\n`;
+    });
+  }
+  
+  else if (lowerText.includes('хореогра') || lowerText.includes('танц')) {
+    const dance = programs.find(p => p.name.includes('Хореография'));
+    response = `💃 ${dance.name}\n` +
+      `Возраст: ${dance.age}\n` +
+      `Цена: ${dance.price} ₽\n` +
+      `Описание: ${dance.description}`;
+  }
+  
+  else if (lowerText.includes('логопед') || lowerText.includes('речь')) {
+    const speech = programs.find(p => p.name.includes('Логопед'));
+    response = `🗣️ ${speech.name}\n` +
+      `Возраст: ${speech.age}\n` +
+      `Цена: ${speech.price} ₽\n` +
+      `Диагностика: ${speech.diagnostic} ₽\n` +
+      `Описание: ${speech.description}`;
+  }
+  
+  else if (lowerText.includes('дошколён') || lowerText.includes('школ')) {
+    const preschool = programs.filter(p => p.name.includes('Дошколён'));
+    response = '📖 Программы подготовки к школе:\n\n';
+    preschool.forEach(prog => {
+      response += `${prog.name}\n   Возраст: ${prog.age}\n   Цена: ${prog.price} ₽\n\n`;
+    });
+  }
+  
+  else if (lowerText.includes('контакт') || lowerText.includes('запис')) {
+    response = `📞 Свяжитесь с нами:\n\n` +
+      `Напишите в личные сообщения группе или позвоните администратору для записи на интересующую программу.`;
+  }
+  
+  else if (lowerText.includes('спас') || lowerText.includes('спасибо')) {
+    response = `😊 Пожалуйста! Если у вас есть ещё вопросы о наших программах, я готов помочь!`;
+  }
+  
+  else {
+    response = `❓ Я - консультант по образовательным программам.\n\n` +
+      `Вы можете спросить:\n` +
+      `• "Мне 5 лет" - программы для вашего возраста\n` +
+      `• "Программы" - полный список\n` +
+      `• "Цены" - стоимость занятий\n` +
+      `• "Робот", "Танцы", "Логопед", "Школа"\n\n` +
+      `📝 Напишите один из этих запросов!`;
+  }
 
-Мы предлагаем 7 образовательных программ для детей:
+  return response;
+}
 
-🤖 Робототехника РобоСТЕАМ (3-4 года) - 300 ₽
-🎯 Робототехника РобоСТЕАМ Брик (5-6 лет) - 300 ₽
-⚙️ Робототехника РобоСТЕАМ Про (6-8 лет) - 400 ₽
-💃 Хореография (3-8 лет) - 350 ₽
-🗣️ Логопед и развитие речи (3-7 лет) - 600 ₽ + диагностика
-📚 Дошколёнок за два года до школы (4-5 лет) - 350 ₽
-📖 Дошколёнок за год до школы (6-7 лет) - 375 ₽
+// Обработка Callback API
+app.post('/callback', (req, res) => {
+  const { type, object, secret } = req.body;
 
-Напишите название интересующей вас программы или нажмите на один из вариантов!"""
-        
-        self.send_message(user_id, greeting_message)
-        logger.info(f"User {user_id} joined the group")
-    
-    def handle_leave_event(self, event):
-        """Обработка выхода из группы"""
-        user_id = event.object.user_id
-        
-        feedback_message = """😢 Нам очень жаль, что вы уходите! 
+  // Проверка секрета
+  if (secret !== process.env.VK_SECRET) {
+    return res.status(403).send('Invalid secret');
+  }
 
-Можете ли вы рассказать, почему вы решили отписаться? Ваша обратная связь помогает нам улучшаться."""
-        
-        # Отправляем только в том случае, если сможем получить информацию о пользователе
-        try:
-            self.vk.messages.send(
-                peer_id=user_id,
-                message=feedback_message,
-                random_id=get_random_id()
-            )
-        except:
-            pass  # Пользователь уже вышел, сообщение не отправится
-        
-        logger.info(f"User {user_id} left the group")
-    
-    def handle_message(self, event):
-        """Основная обработка сообщений"""
-        user_id = event.object.message['from_id']
-        text = event.object.message['text'].lower()
-        
-        user_state, user_data = self.db.get_user_state(user_id)
-        
-        # Специальные команды для директора
-        if user_id == DIRECTOR_ID:
-            if text in ['сводка', '/сводка', 'дневная сводка']:
-                self.send_daily_report(user_id)
-                return
-        
-        # Специальные команды для администратора
-        if user_id == ADMIN_ID:
-            if text in ['/заявки', 'заявки']:
-                self.send_applications_report(user_id)
-                return
-        
-        # Обработка записи на программу
-        if 'запис' in text or user_state == 'recording_program':
-            self.handle_program_registration(user_id, text, user_state, user_data)
-            return
-        
-        # Обработка вопросов о программах
-        if any(program_key in text for program_key in PROGRAMS_DB.keys()):
-            self.handle_program_inquiry(user_id, text)
-            return
-        
-        # Поиск программы по ключевым словам
-        for key, program in PROGRAMS_DB.items():
-            if key in text:
-                response = f"""📋 {program['name']}
-                
-Возраст: {program['age']}
-Цена: {program['price']}
-Описание: {program['description']}
+  if (type === 'confirmation') {
+    console.log('Confirmation received');
+    return res.send(process.env.VK_CONFIRMATION);
+  }
 
-Хотите записаться на эту программу? Напишите 'запись' или нажмите кнопку ниже."""
-                
-                self.send_message(user_id, response)
-                return
-        
-        # Стандартный ответ
-        default_response = """Привет! 👋 
-        
-Я здесь, чтобы помочь вам узнать о наших программах. 
-Какую программу вас интересует? Напишите название или выберите из списка:
-- Робототехника
-- Хореография  
-- Логопед
-- Дошколёнок"""
-        
-        self.send_message(user_id, default_response)
-    
-    def handle_program_inquiry(self, user_id: int, text: str):
-        """Ответ на вопрос о программе"""
-        matched_program = None
-        
-        for key, program in PROGRAMS_DB.items():
-            if key in text:
-                matched_program = program
-                break
-        
-        if matched_program:
-            response = f"""📋 {matched_program['name']}
-            
-✅ Возраст: {matched_program['age']}
-💰 Цена: {matched_program['price']}
-ℹ️ {matched_program['description']}
+  if (type === 'message_new') {
+    const { message } = object;
+    const { text, from_id } = message;
 
-Вы хотите записать ребенка на эту программу? 
-Ответьте 'да' и заполните анкету!"""
-            
-            self.send_message(user_id, response)
-    
-    def handle_program_registration(self, user_id: int, text: str, 
-                                   user_state: Optional[str], user_data: dict):
-        """Обработка процесса записи на программу"""
-        
-        # Шаг 1: Выбор программы
-        if not user_state or user_state == 'start':
-            self.send_message(user_id, "🎓 Какую программу выбираете?")
-            for key, program in PROGRAMS_DB.items():
-                msg = f"• {program['name']} ({program['age']})"
-                self.send_message(user_id, msg)
-            self.db.set_user_state(user_id, 'choose_program', {})
-            return
-        
-        # Шаг 2: Запрос имени ребенка
-        if user_state == 'choose_program':
-            user_data['program'] = text
-            self.send_message(user_id, "👧 Как зовут вашего ребенка?")
-            self.db.set_user_state(user_id, 'enter_child_name', user_data)
-            return
-        
-        # Шаг 3: Дата рождения
-        if user_state == 'enter_child_name':
-            user_data['child_name'] = text
-            self.send_message(user_id, "📅 Дата рождения ребенка (ДД.MM.ГГГГ)?")
-            self.db.set_user_state(user_id, 'enter_birthday', user_data)
-            return
-        
-        # Шаг 4: Номер детского сада
-        if user_state == 'enter_birthday':
-            user_data['child_birthday'] = text
-            self.send_message(user_id, "🏢 Номер детского сада?")
-            self.db.set_user_state(user_id, 'enter_kindergarten', user_data)
-            return
-        
-        # Шаг 5: Номер группы
-        if user_state == 'enter_kindergarten':
-            user_data['kindergarten_number'] = text
-            self.send_message(user_id, "👥 Номер группы?")
-            self.db.set_user_state(user_id, 'enter_group', user_data)
-            return
-        
-        # Шаг 6: ФИО родителя
-        if user_state == 'enter_group':
-            user_data['group_number'] = text
-            self.send_message(user_id, "👨‍👩‍👧 ФИО родителя?")
-            self.db.set_user_state(user_id, 'enter_parent_name', user_data)
-            return
-        
-        # Шаг 7: Номер телефона
-        if user_state == 'enter_parent_name':
-            user_data['parent_name'] = text
-            self.send_message(user_id, "📱 Номер телефона?")
-            self.db.set_user_state(user_id, 'enter_phone', user_data)
-            return
-        
-        # Шаг 8: Обработка номера телефона
-        if user_state == 'enter_phone':
-            phone_match = re.search(r'\d{10,}', text.replace(' ', '').replace('-', '').replace('+', ''))
-            
-            if phone_match:
-                user_data['phone_number'] = phone_match.group()
-                
-                # Сохранить заявку
-                if self.db.save_application(user_id, user_data):
-                    confirmation = f"""✅ Спасибо! Ваша заявка принята!
+    console.log(`Message from ${from_id}: ${text}`);
 
-📋 Данные:
-Ребенок: {user_data.get('child_name')}
-Дата рождения: {user_data.get('child_birthday')}
-Детский сад: {user_data.get('kindergarten_number')}
-Группа: {user_data.get('group_number')}
-Родитель: {user_data.get('parent_name')}
-Телефон: {user_data.get('phone_number')}
-Программа: {user_data.get('program')}
+    // Проверка, что это сообщение не от сообщества
+    if (from_id > 0) {
+      const response = generateResponse(text, from_id);
+      sendVKMessage(from_id, response);
+    }
 
-Мы свяжемся с вами в ближайшее время!"""
-                    
-                    self.send_message(user_id, confirmation)
-                    
-                    # Отправить уведомление администратору
-                    self.send_admin_notification(user_id, user_data)
-                    
-                    # Очистить состояние
-                    self.db.set_user_state(user_id, None, {})
-                else:
-                    self.send_message(user_id, "❌ Ошибка при сохранении заявки. Попробуйте позже.")
-            else:
-                self.send_message(user_id, "📱 Пожалуйста, введите корректный номер телефона")
-    
-    def send_admin_notification(self, user_id: int, user_data: dict):
-        """Отправить уведомление администратору о новой заявке"""
-        try:
-            user_info = self.get_user_info(user_id)
-            profile_link = f"https://vk.com/id{user_id}"
-            
-            notification = f"""📬 НОВАЯ ЗАЯВКА!
+    return res.send('ok');
+  }
 
-Родитель: {user_info.get('first_name', '')} {user_info.get('last_name', '')}
-Профиль: {profile_link}
+  res.send('ok');
+});
 
-Ребенок: {user_data.get('child_name')}
-Дата рождения: {user_data.get('child_birthday')}
-Детский сад: {user_data.get('kindergarten_number')}
-Группа: {user_data.get('group_number')}
-ФИО родителя: {user_data.get('parent_name')}
-Телефон: {user_data.get('phone_number')}
-Программа: {user_data.get('program')}"""
-            
-            self.send_message(ADMIN_ID, notification)
-            logger.info(f"Admin notification sent for user {user_id}")
-        except Exception as e:
-            logger.error(f"Error sending admin notification: {e}")
-    
-    def send_daily_report(self, director_id: int):
-        """Отправить ежедневную сводку директору"""
-        try:
-            pending_apps = self.db.get_pending_applications()
-            
-            report = f"""📊 ЕЖЕДНЕВНАЯ СВОДКА
-Дата: {datetime.now().strftime('%d.%m.%Y %H:%M')}
+// Основной маршрут
+app.get('/', (req, res) => {
+  res.send('VK Educational Bot is running 🤖');
+});
 
-📝 Новые заявки: {len(pending_apps)}
-"""
-            
-            if pending_apps:
-                report += "\nДетали:\n"
-                for app in pending_apps:
-                    report += f"""
-• {app['child_name']} - {app['program']}
-  Родитель: {app['parent_name']}
-  Телефон: {app['phone_number']}
-  Статус: {app['status']}"""
-            
-            self.send_message(director_id, report)
-            logger.info(f"Daily report sent to director {director_id}")
-        except Exception as e:
-            logger.error(f"Error sending daily report: {e}")
-    
-    def send_applications_report(self, admin_id: int):
-        """Отправить отчет о заявках администратору"""
-        try:
-            pending_apps = self.db.get_pending_applications()
-            
-            report = f"""📋 ОТЧЕТ О ЗАЯВКАХ
-Дата: {datetime.now().strftime('%d.%m.%Y %H:%M')}
+// Проверка здоровья для Render
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok' });
+});
 
-Всего заявок: {len(pending_apps)}
-"""
-            
-            for app in pending_apps:
-                report += f"""
-
-🔹 ID: {app['id']}
-   Ребенок: {app['child_name']}
-   Родитель: {app['parent_name']}
-   Телефон: {app['phone_number']}
-   Программа: {app['program']}
-   Статус: {app['status']}"""
-            
-            self.send_message(admin_id, report)
-        except Exception as e:
-            logger.error(f"Error sending applications report: {e}")
-    
-    def run(self):
-        """Запустить бота"""
-        logger.info("Bot started listening...")
-        
-        for event in self.longpoll.listen():
-            try:
-                if event.type == VkBotEventType.MESSAGE_NEW:
-                    self.handle_message(event)
-                
-                elif event.type == VkBotEventType.USER_JOIN:
-                    self.handle_join_event(event)
-                
-                elif event.type == VkBotEventType.USER_LEAVE:
-                    self.handle_leave_event(event)
-            
-            except Exception as e:
-                logger.error(f"Error handling event: {e}")
-
-# ==================== ЗАПУСК ====================
-
-if __name__ == "__main__":
-    bot = RoboSTEAMuLBot(VK_GROUP_TOKEN, VK_API_TOKEN, GROUP_ID)
-    bot.run()
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+  console.log('Bot is ready to receive messages from VK!');
+});
