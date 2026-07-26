@@ -143,8 +143,8 @@ def get_program_details(program_key):
 def get_registration_form():
     text = 'Отлично! Давайте запишем вашего ребенка на занятия.\n\n'
     text += 'Пожалуйста, ответьте на следующие вопросы:\n\n'
-    text += '1. Как зовут вашего ребенка?\n\n'
-    text += 'Напишите имя ребенка'
+    text += '1. Полное имя ребенка (ФИО)\n\n'
+    text += 'Напишите полное имя ребенка'
     return text
 
 def ask_child_age():
@@ -153,31 +153,55 @@ def ask_child_age():
     text += 'Укажите возраст (например: 5 или 6)'
     return text
 
+def ask_kindergarten():
+    text = 'Спасибо! Продолжаем:\n\n'
+    text += '3. Название детского сада (если посещает)\n\n'
+    text += 'Напишите название или "нет" если не посещает'
+    return text
+
+def ask_group_number():
+    text = 'Спасибо! Теперь:\n\n'
+    text += '4. Номер группы в детском саду\n\n'
+    text += 'Напишите номер группы или "нет" если не посещает'
+    return text
+
+def ask_parent_name():
+    text = 'Спасибо! Теперь:\n\n'
+    text += '5. Полное имя родителя (ФИО)\n\n'
+    text += 'Напишите ваше полное имя'
+    return text
+
+def ask_parent_phone():
+    text = 'Спасибо! Теперь:\n\n'
+    text += '6. Номер телефона для связи\n\n'
+    text += 'Напишите ваш номер телефона (например: +7 (921) 123-45-67)'
+    return text
+
 def ask_program_choice():
     text = 'Отлично! Какая программа вас интересует?\n\n'
     text += 'Напишите один из кодов:\n'
-    text += 'robo_34 - Робототехника 3-4 года\n'
-    text += 'brick - РобоСТЕАМ Брик 5-6 лет\n'
-    text += 'pro - РобоСТЕАМ Про 6-8 лет\n'
-    text += 'dance - Хореография\n'
-    text += 'logoped - Логопед и развитие речи\n'
-    text += 'school_2 - Дошколёнок 4-5 лет\n'
-    text += 'school_1 - Дошколёнок 6-7 лет'
-    return text
-
-def ask_parent_contact():
-    text = 'Спасибо за выбор!\n\n'
-    text += '3. Укажите ваше имя и номер телефона для связи\n\n'
-    text += 'Например: Иван +7 (9XX) XXX-XX-XX'
+    text += 'robo_34 - Робототехника 3-4 года (300 руб)\n'
+    text += 'brick - РобоСТЕАМ Брик 5-6 лет (300 руб)\n'
+    text += 'pro - РобоСТЕАМ Про 6-8 лет (400 руб)\n'
+    text += 'dance - Хореография (350 руб)\n'
+    text += 'logoped - Логопед и развитие речи (600 руб)\n'
+    text += 'school_2 - Дошколёнок 4-5 лет (350 руб)\n'
+    text += 'school_1 - Дошколёнок 6-7 лет (375 руб)'
     return text
 
 def confirm_registration(user_id, data):
     text = 'Спасибо за регистрацию!\n\n'
-    text += 'Данные вашего ребенка:\n'
-    text += 'Имя: ' + data.get('child_name', 'Не указано') + '\n'
+    text += 'Сведения о ребенке:\n'
+    text += 'ФИО ребенка: ' + data.get('child_name', 'Не указано') + '\n'
     text += 'Возраст: ' + data.get('child_age', 'Не указано') + ' лет\n'
-    text += 'Программа: ' + data.get('program_name', 'Не выбрана') + '\n'
-    text += 'Ваши контакты: ' + data.get('parent_contact', 'Не указаны') + '\n\n'
+    text += 'Детский сад: ' + data.get('kindergarten', 'Не указано') + '\n'
+    text += 'Номер группы: ' + data.get('group_number', 'Не указано') + '\n\n'
+    text += 'Сведения о родителе:\n'
+    text += 'ФИО родителя: ' + data.get('parent_name', 'Не указано') + '\n'
+    text += 'Телефон: ' + data.get('parent_phone', 'Не указано') + '\n\n'
+    text += 'Выбранная программа:\n'
+    text += 'Направление: ' + data.get('program_name', 'Не выбрано') + '\n'
+    text += 'Цена: ' + data.get('program_price', 'Не указана') + '\n\n'
     text += 'Мы свяжемся с вами в течение 24 часов для подтверждения записи.\n\n'
     text += 'Спасибо, что выбрали РобоСТЕАМ!'
     
@@ -190,14 +214,18 @@ def save_registration(user_id, data):
             'user_id': user_id,
             'child_name': data.get('child_name', ''),
             'child_age': data.get('child_age', ''),
+            'kindergarten': data.get('kindergarten', ''),
+            'group_number': data.get('group_number', ''),
+            'parent_name': data.get('parent_name', ''),
+            'parent_phone': data.get('parent_phone', ''),
             'program': data.get('program', ''),
             'program_name': data.get('program_name', ''),
-            'parent_contact': data.get('parent_contact', ''),
+            'program_price': data.get('program_price', ''),
             'date': datetime.now().isoformat()
         }
         filename = '/tmp/registration_' + str(user_id) + '.json'
         with open(filename, 'w', encoding='utf-8') as f:
-            json.dump(registration, f, ensure_ascii=False)
+            json.dump(registration, f, ensure_ascii=False, indent=2)
         print('Регистрация сохранена для пользователя ' + str(user_id))
     except Exception as e:
         print('Ошибка сохранения: ' + str(e))
@@ -276,24 +304,40 @@ def handle_user_message(user_id, message_text):
         if message_text.isdigit():
             user_registration_data[user_id]['child_age'] = message_text
             user_registration_data[user_id]['step'] = 3
-            response = ask_program_choice()
+            response = ask_kindergarten()
         else:
             response = 'Пожалуйста, укажите возраст цифрой (например: 5)'
     
     elif current_step == 3:
+        user_registration_data[user_id]['kindergarten'] = message_text
+        user_registration_data[user_id]['step'] = 4
+        response = ask_group_number()
+    
+    elif current_step == 4:
+        user_registration_data[user_id]['group_number'] = message_text
+        user_registration_data[user_id]['step'] = 5
+        response = ask_parent_name()
+    
+    elif current_step == 5:
+        user_registration_data[user_id]['parent_name'] = message_text
+        user_registration_data[user_id]['step'] = 6
+        response = ask_parent_phone()
+    
+    elif current_step == 6:
+        user_registration_data[user_id]['parent_phone'] = message_text
+        user_registration_data[user_id]['step'] = 7
+        response = ask_program_choice()
+    
+    elif current_step == 7:
         prog_key = msg
         if prog_key in PROGRAMS:
             user_registration_data[user_id]['program'] = prog_key
             user_registration_data[user_id]['program_name'] = PROGRAMS[prog_key]['name']
-            user_registration_data[user_id]['step'] = 4
-            response = ask_parent_contact()
+            user_registration_data[user_id]['program_price'] = PROGRAMS[prog_key]['price']
+            response = confirm_registration(user_id, user_registration_data[user_id])
+            user_registration_data[user_id]['step'] = 0
         else:
             response = 'Такой программы нет. Напишите правильный код:\nrobo_34, brick, pro, dance, logoped, school_2, school_1'
-    
-    elif current_step == 4:
-        user_registration_data[user_id]['parent_contact'] = message_text
-        response = confirm_registration(user_id, user_registration_data[user_id])
-        user_registration_data[user_id]['step'] = 0
     
     elif 'программ' in msg or 'курс' in msg or 'что' in msg or 'какие' in msg:
         response = get_all_programs()
