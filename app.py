@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """VK Callback API bot for RoboSTEAMuL.
 
-Version 3.1
+Version 3.2
 - registration asks for kindergarten NUMBER, not name;
 - application is sent to administrator only after parent confirmation;
 - SQLite persistence for sessions and applications;
@@ -40,6 +40,13 @@ VK_API_VERSION = os.getenv("VK_API_VERSION", "5.199")
 COMPANY_SITE = os.getenv("COMPANY_SITE", "https://robosteamul.com")
 ADMIN_NAME = os.getenv("ADMIN_NAME", "Наталья")
 ADMIN_PHONE = os.getenv("ADMIN_PHONE", "+7 (922) 014-44-94")
+
+# Контакты, которые бот показывает родителям по команде «контакты».
+CONTACTS = (
+    {"name": "Наталья", "phone": "+7 (922) 014-44-94"},
+    {"name": "Ксения", "phone": "+7 (904) 805-25-61"},
+    {"name": "Жанна", "phone": "+7 (951) 239-86-49"},
+)
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
@@ -353,6 +360,14 @@ def main_menu() -> str:
     )
 
 
+def contacts_text() -> str:
+    lines = ["📞 Контакты RoboSTEAMuL", ""]
+    for contact in CONTACTS:
+        lines.append(f"{contact['name']}: {contact['phone']}")
+    lines.extend(["", f"Сайт: {COMPANY_SITE}"])
+    return "\n".join(lines)
+
+
 def programs_text() -> str:
     lines = ["Программы RoboSTEAMuL:"]
     for index, program in enumerate(PROGRAMS.values(), start=1):
@@ -387,7 +402,7 @@ def confirmation_text(session: Dict[str, Any]) -> str:
         f"Родитель: {session['parent_name']}\n"
         f"Телефон: {session['parent_phone']}\n"
         f"Направление: {program['name']} ({program['age']})\n\n"
-        "Напишите «да», чтобы отправить заявку администратору Наталье.\n"
+        f"Напишите «да», чтобы отправить заявку администратору {ADMIN_NAME}.\n"
         "Напишите «сначала», чтобы заполнить заново, или «отмена»."
     )
 
@@ -515,13 +530,13 @@ def process_registration(user_id: int, text: str, session: Dict[str, Any]) -> No
                     user_id,
                     f"✅ Заявка №{application_id} отправлена администратору {ADMIN_NAME}. "
                     "Администратор свяжется с вами, чтобы подтвердить расписание, стоимость и наличие места.\n\n"
-                    f"Телефон для связи: {ADMIN_PHONE}",
+                    + contacts_text(),
                 )
             else:
                 vk_send(
                     user_id,
                     f"Заявка №{application_id} сохранена, но автоматическое уведомление администратору не отправилось. "
-                    f"Пожалуйста, свяжитесь с {ADMIN_NAME}: {ADMIN_PHONE}.",
+                    "Пожалуйста, свяжитесь с одним из администраторов.\n\n" + contacts_text(),
                 )
             return
         if low in {"сначала", "заново", "нет", "исправить"}:
@@ -556,7 +571,7 @@ def handle_message(user_id: int, text: str) -> None:
     elif "программ" in low or "направлен" in low or "круж" in low:
         vk_send(user_id, programs_text())
     elif "контакт" in low or "телефон" in low or "администратор" in low:
-        vk_send(user_id, f"Администратор: {ADMIN_NAME}\nТелефон: {ADMIN_PHONE}\nСайт: {COMPANY_SITE}")
+        vk_send(user_id, contacts_text())
     elif low in {"привет", "здравствуйте", "добрый день", "добрый вечер", "доброе утро", "начать", "старт"}:
         vk_send(user_id, main_menu())
     elif "спасибо" in low:
