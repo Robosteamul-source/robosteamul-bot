@@ -461,6 +461,189 @@ def validate_child_fio_step1(name: str) -> Tuple[bool, str]:
     # ✅ Все проверки пройдены
     return True, normalized_name
 
+def normalize_kindergarten_number(text: str) -> str:
+    """
+    Нормализация номера детского сада.
+    
+    Входные примеры:
+    - 30
+    - №30
+    - ДОУ 30
+    - ДОУ №30
+    - Детский сад 30
+    - Садик 30
+    - Д/С 30
+    - 30 СП
+    - 30сп
+    - ДОУ 30 СП
+    
+    Выходной формат:
+    - 30
+    - 30 СП
+    """
+    text = text.strip()
+    
+    # Удаляем префиксы
+    prefixes = ['детский сад', 'детсад', 'дoу', 'доу', 'д/с', 'д-с', 'садик', 'сад']
+    text_lower = text.lower()
+    
+    for prefix in prefixes:
+        if text_lower.startswith(prefix):
+            text = text[len(prefix):].strip()
+            text_lower = text.lower()
+    
+    # Убираем символ №
+    text = text.replace('№', '').replace('#', '').strip()
+    
+    # Выделяем номер и СП
+    # Ищем основное число
+    import re
+    match = re.search(r'(\d+)\s*(сп|п)?', text, re.IGNORECASE)
+    
+    if match:
+        number = match.group(1)
+        suffix = match.group(2)
+        
+        if suffix:
+            # Нормализуем СП/СП в "СП"
+            suffix_upper = suffix.upper()
+            return f"{number} {suffix_upper}"
+        else:
+            return number
+    
+    # Если не найдена числовая часть, вернуть оригинальный текст
+    return text.strip()
+
+def validate_kindergarten_number(text: str) -> Tuple[bool, str]:
+    """
+    Валидация и нормализация номера детского сада.
+    Возвращает: (is_valid, normalized_number_or_error_message)
+    """
+    if not text or not text.strip():
+        return False, '''❌ Пожалуйста, напишите номер детского сада
+
+📝 Примеры:
+   • 30
+   • 448
+   • 369
+   • 30 СП
+
+→ Попробуйте еще раз:'''
+    
+    normalized = normalize_kindergarten_number(text)
+    
+    # Проверяем, есть ли хотя бы одна цифра
+    if not any(c.isdigit() for c in normalized):
+        return False, '''❌ Пожалуйста, напишите номер детского сада (должны быть цифры)
+
+📝 Примеры:
+   • 30
+   • 448
+   • 369
+   • 30 СП
+
+→ Попробуйте еще раз:'''
+    
+    return True, normalized
+    """
+    СТРОГАЯ валидация ФИО ребенка для шага 1 регистрации.
+    
+    Требования:
+    - 2-4 слова (фамилия + имя, или имя + отчество, или фамилия + имя + отчество)
+    - Только русские буквы, пробелы и дефисы
+    - Нормализованный регистр (первая буква каждого слова заглавная)
+    
+    Возвращает: (is_valid, normalized_name_or_error_message)
+    """
+    name = name.strip()
+    
+    # Проверка 1: Не пуста
+    if not name:
+        return False, '''❌ Пожалуйста, напишите фамилию и имя ребенка
+
+📝 Примеры правильного ввода:
+   • Иван Петрович
+   • Петров Иван
+   • Сидорова Мария Ивановна
+
+→ Попробуйте еще раз:'''
+    
+    # Проверка 2: Только русские буквы, пробелы и дефисы
+    if not all(c.isalpha() or c.isspace() or c == '-' for c in name):
+        return False, '''❌ Используйте только русские буквы, пробелы и дефисы
+
+Не допускаются: числа, английские буквы, спецсимволы (!, @, #, и т.д.)
+
+📝 Примеры правильного ввода:
+   • Иван Петрович
+   • Петров Иван
+   • Сидорова-Петрова Мария
+
+→ Попробуйте еще раз:'''
+    
+    # Проверка 3: Хотя бы одна буква
+    if not any(c.isalpha() for c in name):
+        return False, '''❌ Имя должно содержать буквы
+
+📝 Примеры правильного ввода:
+   • Иван Петрович
+   • Петров Иван
+   • Сидорова Мария Ивановна
+
+→ Попробуйте еще раз:'''
+    
+    # Проверка 4: Количество слов (2-4)
+    words = [w for w in name.split() if w]  # Убираем пустые элементы
+    
+    if len(words) < 2:
+        return False, '''❌ Напишите хотя бы ДВА слова: фамилию и имя
+
+📝 Правильные примеры:
+   • Иван Петрович (имя + отчество)
+   • Петров Иван (фамилия + имя)
+   • Сидорова Мария Ивановна (фамилия + имя + отчество)
+
+→ Попробуйте еще раз:'''
+    
+    if len(words) > 4:
+        return False, '''❌ Слишком много слов! Напишите максимум 4 слова
+
+📝 Правильные примеры:
+   • Иван Петрович (имя + отчество)
+   • Петров Иван (фамилия + имя)
+   • Сидорова Мария Ивановна (фамилия + имя + отчество)
+
+→ Попробуйте еще раз:'''
+    
+    # Проверка 5: Каждое слово содержит хотя бы 2 символа (кроме дефисных)
+    for word in words:
+        # Убираем дефисы и проверяем остаток
+        word_clean = word.replace('-', '')
+        if len(word_clean) < 1:
+            return False, '''❌ Каждое слово должно содержать хотя бы одну букву
+
+Примеры: Иван, Петров, О-Мария (О-Мария - с дефисом, это нормально)
+
+→ Попробуйте еще раз:'''
+    
+    # Нормализация: заглавная первая буква каждого слова
+    normalized_words = []
+    for word in words:
+        # Разбиваем по дефисам (для имен типа Мария-Анна)
+        parts = word.split('-')
+        normalized_parts = []
+        for part in parts:
+            if part:
+                # Первая буква заглавная, остальные строчные
+                normalized = part[0].upper() + part[1:].lower()
+                normalized_parts.append(normalized)
+        normalized_words.append('-'.join(normalized_parts))
+    
+    normalized_name = ' '.join(normalized_words)
+    
+    # ✅ Все проверки пройдены
+    return True, normalized_name
+
 def validate_phone(phone: str) -> Tuple[bool, str]:
     """Проверяет корректность номера телефона"""
     # Удаляем все не-цифры
@@ -791,31 +974,25 @@ def get_kindergarten_info(kg_id) -> Optional[Dict]:
 
 def get_registration_step_3() -> str:
     """
-    УЛУЧШЕННЫЙ третий вопрос с подбором детского сада
+    НОВЫЙ третий вопрос - просто номер детского сада
     """
-    territories_text = ', '.join([
-        'Центр', 'Север', 'Юг', 'Восток', 'Запад',
-        'Северо-Запад', 'Северо-Восток', 'Юго-Запад', 'Юго-Восток'
-    ])
-    
-    return f'''✅ Хорошо! Далее...
+    return '''✅ Хорошо! Далее...
 
 🔹 ВОПРОС 3️⃣ из 7️⃣
 
-Номер детского сада или улицу, где находится детский сад
+Напишите номер детского сада, который посещает ребёнок.
 
-Мы подберем вам подходящий из наших учреждений! 🏫
+Достаточно написать только номер, без слов «детский сад» или «ДОУ».
 
-Напишите одно из:
-📌 Номер сада (например: 30, 44, 475)
-📌 Улицу или адрес (например: Зальцмана, Духова, Конструктора Духова)
-📌 Территорию проживания (например: Центр, Север, Юг)
-📌 "Нет" - если не посещает ДОУ
+📝 Примеры:
+   • 30
+   • 448
+   • 369
+   • 30 СП
 
-Доступные территории:
-{territories_text}
+Бот автоматически найдет детский сад в базе!
 
-→ Напишите номер сада, улицу, территорию или "нет":'''
+→ Напишите номер детского сада:'''
 
 def get_available_kindergartens_list() -> str:
     """Получить полный список доступных садов"""
@@ -1137,97 +1314,139 @@ def process_registration_step(user_id: int, step: int, message_text: str) -> Tup
         child_name = user_registration_data[user_id].get('child_name', '')
         return get_registration_step_2_with_recommendations(age, child_name), True
     
-    elif step == 3:  # Детский сад - УЛУЧШЕНО
+    elif step == 3:  # Детский сад - НОВАЯ логика (только номер)
         msg = message_text.lower().strip()
         
-        # Если пользователь написал "нет"
-        if msg == 'нет' or msg == 'нет сада' or msg == 'не посещает':
-            user_registration_data[user_id]['kindergarten'] = 'Не посещает'
-            user_registration_data[user_id]['kindergarten_id'] = 'none'
-            user_registration_data[user_id]['step'] = 4
-            return get_registration_step_4(), True
+        # Проверяем есть ли ожидающее подтверждение
+        pending_kg = user_registration_data[user_id].get('pending_kindergarten')
         
-        # Если пользователь запросил список
-        if msg == 'список' or msg == 'все сады' or msg == 'какие сады':
-            return get_available_kindergartens_list() + '\n\n→ Напишите номер сада, территорию или "нет":', False
+        # Если есть ожидающее подтверждение, обработать ответ на подтверждение
+        if pending_kg:
+            if msg in ['да', 'да!', 'верно', 'верно!', 'всё верно']:
+                # Подтверждение - сохраняем и переходим на следующий шаг
+                user_registration_data[user_id]['kindergarten'] = pending_kg['name']
+                user_registration_data[user_id]['kindergarten_address'] = pending_kg['address']
+                user_registration_data[user_id]['kindergarten_id'] = str(pending_kg['id'])
+                user_registration_data[user_id]['step'] = 4
+                
+                # Удаляем ожидающие данные
+                del user_registration_data[user_id]['pending_kindergarten']
+                del user_registration_data[user_id]['pending_kg_number']
+                
+                return get_registration_step_4(), True
+            
+            elif msg in ['нет', 'нет!', 'изменить', 'изменить номер', 'другой']:
+                # Отказ от подтверждения - вернуться к вводу номера
+                user_registration_data[user_id]['pending_kindergarten'] = None
+                user_registration_data[user_id]['pending_kg_number'] = None
+                
+                return f'''🔄 Хорошо, давайте попробуем еще раз!
+
+{get_registration_step_3()}''', False
+            
+            elif msg in ['отмена', 'отмена!', 'выход']:
+                # Отмена регистрации
+                user_registration_data[user_id]['step'] = 0
+                del user_registration_data[user_id]['pending_kindergarten']
+                del user_registration_data[user_id]['pending_kg_number']
+                
+                send_message(user_id, '''❌ РЕГИСТРАЦИЯ ОТМЕНЕНА
+
+Если хотите начать регистрацию заново, напишите "запись"''')
+                return '', True
+            
+            else:
+                # Неправильный ответ на подтверждение
+                return '''❓ Пожалуйста, ответьте:
+
+✅ "Да" - всё верно
+🔄 "Изменить номер" - ввести другой номер
+❌ "Отмена" - выход из регистрации
+
+→ Ваш ответ:''', False
         
-        found_kgs = []
+        # ОСНОВНАЯ ЛОГИКА: нормализация и поиск номера
         
-        # Сначала пытаемся найти по номеру
+        # Валидируем номер
+        is_valid, normalized = validate_kindergarten_number(message_text)
+        if not is_valid:
+            return normalized, False
+        
+        # Ищем сад по нормализованному номеру
+        kg = None
         try:
-            kg_id_float = float(message_text) if '.' in message_text else int(message_text)
-            kg = get_kindergarten_info(kg_id_float)
-            if kg:
-                found_kgs = [(kg_id_float, kg)]
+            # Извлекаем основной номер (до пробела если есть СП)
+            base_number = normalized.split()[0]
+            kg_id_search = int(base_number)
+            kg = get_kindergarten_info(kg_id_search)
         except:
-            pass
+            kg = None
         
-        # Если не найдено по номеру, ищем по территории
-        if not found_kgs:
-            found_kgs = find_kindergartens_by_territory(msg)
-        
-        # Если не найдено, пытаемся найти по адресу
-        if not found_kgs:
-            for kg_id, kg_info in KINDERGARTENS.items():
-                if msg in kg_info['address'].lower():
-                    found_kgs.append((kg_id, kg_info))
-        
-        # Если ничего не найдено
-        if not found_kgs:
-            response = f'''❌ Сад не найден: "{message_text}"
+        # Если сад найден
+        if kg:
+            # Сохраняем в pending для подтверждения
+            user_registration_data[user_id]['pending_kindergarten'] = {
+                'id': kg_id_search,
+                'name': kg['name'],
+                'address': kg['address'],
+                'location': kg['location'],
+                'programs_emoji': ', '.join([PROGRAMS[p]['emoji'] for p in kg['programs'] if p in PROGRAMS])
+            }
+            user_registration_data[user_id]['pending_kg_number'] = normalized
+            
+            # Показываем подтверждение
+            response = f'''✅ Найден детский сад!
 
-Попробуйте одно из:
-📌 Номер сада (30, 44, 475)
-📌 Территорию (Центр, Север, Юг)
-📌 Адрес (Зальцмана, Духова)
-📌 "список" - показать все сады
-📌 "нет" - не посещает ДОУ
+🏢 {kg['name']}
+📍 {kg['address']}
+🗺️ {kg['location']}
+📚 Программы: {user_registration_data[user_id]['pending_kindergarten']['programs_emoji']}
 
-→ Напишите еще раз:'''
+✅ Всё верно?
+
+Выберите:
+   • "Да" - подтвердить
+   • "Изменить номер" - ввести другой номер
+   • "Отмена" - выход
+
+→ Ваш ответ:'''
             return response, False
         
-        # Если найден один сад
-        if len(found_kgs) == 1:
-            kg_id, kg_info = found_kgs[0]
-            user_registration_data[user_id]['kindergarten'] = kg_info['name']
-            user_registration_data[user_id]['kindergarten_address'] = kg_info['address']
-            user_registration_data[user_id]['kindergarten_id'] = str(kg_id)
-            user_registration_data[user_id]['step'] = 4
+        # Если сад НЕ найден
+        else:
+            response = f'''❌ К сожалению, детского сада с номером {normalized} нет в нашей базе.
+
+Проверьте номер или выберите действие:
+
+   • "Ввести другой номер" - попробовать еще раз
+   • "Нет в списке" - продолжить без указания сада
+   • "Отмена" - выход из регистрации
+
+→ Ваш ответ:'''
             
-            # Показываем найденный сад
-            programs_emoji = ', '.join([PROGRAMS[p]['emoji'] for p in kg_info['programs'] if p in PROGRAMS])
-            response = f'''✅ Отлично! Нашли ваш сад:
+            # Проверяем ответ
+            if msg in ['ввести другой номер', 'другой номер', 'еще раз', 'попробовать']:
+                return f'''Хорошо!
 
-🏢 {kg_info['name']}
-📍 {kg_info['address']}
-🗺️ {kg_info['location']}
-📚 Наши программы: {programs_emoji}
-
-Продолжим...
-
-{get_registration_step_4()}'''
-            return response, True
-        
-        # Если найдено несколько садов
-        if len(found_kgs) <= 5:
-            response = f'''✅ Найдено {len(found_kgs)} садов в этой территории!
-
-Выберите ваш:
-'''
-            for kg_id, kg_info in found_kgs:
-                response += f'\n🏢 {kg_info["name"]} - {kg_info["address"]}\n   (Напишите номер {int(kg_id) if kg_id == int(kg_id) else kg_id})'
+{get_registration_step_3()}''', False
             
-            response += '\n\n→ Напишите номер сада или территорию поточнее:'
-            return response, False
-        
-        # Слишком много результатов
-        response = f'''📍 Найдено {len(found_kgs)} садов! Уточните:
-- Номер сада (30, 44, 475)
-- Адрес
-- Территорию поточнее
+            elif msg in ['нет в списке', 'продолжить', 'продолжить без сада', 'без сада']:
+                # Сохраняем что сад не найден
+                user_registration_data[user_id]['kindergarten'] = f'Не в системе: {normalized}'
+                user_registration_data[user_id]['kindergarten_id'] = 'not_found'
+                user_registration_data[user_id]['step'] = 4
+                
+                return get_registration_step_4(), True
+            
+            elif msg in ['отмена', 'отмена!', 'выход']:
+                user_registration_data[user_id]['step'] = 0
+                send_message(user_id, '''❌ РЕГИСТРАЦИЯ ОТМЕНЕНА
 
-→ Напишите еще раз:'''
-        return response, False
+Если хотите начать регистрацию заново, напишите "запись"''')
+                return '', True
+            
+            else:
+                return response, False
     
     elif step == 4:  # Номер или адрес детского сада
         msg = message_text.lower().strip()
