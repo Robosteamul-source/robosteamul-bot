@@ -361,6 +361,106 @@ def validate_fio(name: str) -> Tuple[bool, str]:
     # Даже если не распознали имена, принимаем если больше одного слова
     return True, name
 
+def validate_child_fio_step1(name: str) -> Tuple[bool, str]:
+    """
+    СТРОГАЯ валидация ФИО ребенка для шага 1 регистрации.
+    
+    Требования:
+    - 2-4 слова (фамилия + имя, или имя + отчество, или фамилия + имя + отчество)
+    - Только русские буквы, пробелы и дефисы
+    - Нормализованный регистр (первая буква каждого слова заглавная)
+    
+    Возвращает: (is_valid, normalized_name_or_error_message)
+    """
+    name = name.strip()
+    
+    # Проверка 1: Не пуста
+    if not name:
+        return False, '''❌ Пожалуйста, напишите фамилию и имя ребенка
+
+📝 Примеры правильного ввода:
+   • Иван Петрович
+   • Петров Иван
+   • Сидорова Мария Ивановна
+
+→ Попробуйте еще раз:'''
+    
+    # Проверка 2: Только русские буквы, пробелы и дефисы
+    if not all(c.isalpha() or c.isspace() or c == '-' for c in name):
+        return False, '''❌ Используйте только русские буквы, пробелы и дефисы
+
+Не допускаются: числа, английские буквы, спецсимволы (!, @, #, и т.д.)
+
+📝 Примеры правильного ввода:
+   • Иван Петрович
+   • Петров Иван
+   • Сидорова-Петрова Мария
+
+→ Попробуйте еще раз:'''
+    
+    # Проверка 3: Хотя бы одна буква
+    if not any(c.isalpha() for c in name):
+        return False, '''❌ Имя должно содержать буквы
+
+📝 Примеры правильного ввода:
+   • Иван Петрович
+   • Петров Иван
+   • Сидорова Мария Ивановна
+
+→ Попробуйте еще раз:'''
+    
+    # Проверка 4: Количество слов (2-4)
+    words = [w for w in name.split() if w]  # Убираем пустые элементы
+    
+    if len(words) < 2:
+        return False, '''❌ Напишите хотя бы ДВА слова: фамилию и имя
+
+📝 Правильные примеры:
+   • Иван Петрович (имя + отчество)
+   • Петров Иван (фамилия + имя)
+   • Сидорова Мария Ивановна (фамилия + имя + отчество)
+
+→ Попробуйте еще раз:'''
+    
+    if len(words) > 4:
+        return False, '''❌ Слишком много слов! Напишите максимум 4 слова
+
+📝 Правильные примеры:
+   • Иван Петрович (имя + отчество)
+   • Петров Иван (фамилия + имя)
+   • Сидорова Мария Ивановна (фамилия + имя + отчество)
+
+→ Попробуйте еще раз:'''
+    
+    # Проверка 5: Каждое слово содержит хотя бы 2 символа (кроме дефисных)
+    for word in words:
+        # Убираем дефисы и проверяем остаток
+        word_clean = word.replace('-', '')
+        if len(word_clean) < 1:
+            return False, '''❌ Каждое слово должно содержать хотя бы одну букву
+
+Примеры: Иван, Петров, О-Мария (О-Мария - с дефисом, это нормально)
+
+→ Попробуйте еще раз:'''
+    
+    # Нормализация: заглавная первая буква каждого слова
+    normalized_words = []
+    for word in words:
+        # Разбиваем по дефисам (для имен типа Мария-Анна)
+        parts = word.split('-')
+        normalized_parts = []
+        for part in parts:
+            if part:
+                # Первая буква заглавная, остальные строчные
+                normalized = part[0].upper() + part[1:].lower()
+                normalized_parts.append(normalized)
+        normalized_words.append('-'.join(normalized_parts))
+    
+    normalized_name = ' '.join(normalized_words)
+    
+    # ✅ Все проверки пройдены
+    return True, normalized_name
+
 def validate_phone(phone: str) -> Tuple[bool, str]:
     """Проверяет корректность номера телефона"""
     # Удаляем все не-цифры
@@ -1007,23 +1107,22 @@ def process_registration_step(user_id: int, step: int, message_text: str) -> Tup
         return '❌ Регистрация отменена. Введите "запись" чтобы начать заново.', True
     
     if step == 1:  # ФИО ребенка
-        is_valid, result = validate_fio(message_text)
+        is_valid, result = validate_child_fio_step1(message_text)
         if not is_valid:
-            # Возвращаем ошибку с примерами
-            error_msg = f'''{result}
-
-💡 ПРИМЕРЫ ПРАВИЛЬНОГО ВВОДА:
-   • Иван Петрович
-   • Петров Иван Сергеевич
-   • Мария Ивановна
-   • Сидорова Елена Дмитриевна
-
-→ Попробуйте еще раз:'''
-            return error_msg, False
+            # result уже содержит полное сообщение об ошибке с примерами
+            return result, False
         
-        user_registration_data[user_id]['child_name'] = message_text
+        # Сохраняем нормализованное ФИО
+        user_registration_data[user_id]['child_name'] = result
         user_registration_data[user_id]['step'] = 2
-        return get_registration_step_2(), True
+        
+        # Подтверждение сохранения
+        confirm_msg = f'''✅ Спасибо! ФИО ребенка сохранено: {result}
+
+Продолжим...
+
+{get_registration_step_2()}'''
+        return confirm_msg, True
     
     elif step == 2:  # Возраст - УЛУЧШЕНО
         is_valid, result = validate_age(message_text)
@@ -1214,7 +1313,12 @@ def process_registration_step(user_id: int, step: int, message_text: str) -> Tup
 
 def handle_user_message(user_id: int, message_text: str):
     """
-    РАСШИРЕННЫЙ обработчик сообщений с улучшенным анализом
+    ПЕРЕРАБОТАННЫЙ обработчик сообщений с правильной маршрутизацией.
+    
+    КЛЮЧЕВОЙ ПРИНЦИП:
+    Если пользователь находится в процессе регистрации (шаг > 0),
+    его сообщения обрабатываются ТОЛЬКО обработчиком регистрации.
+    Общий AI-обработчик вызывается ТОЛЬКО при отсутствии активного сценария.
     """
     if not message_text:
         return
@@ -1230,68 +1334,66 @@ def handle_user_message(user_id: int, message_text: str):
     logger.info(f'📨 Сообщение от {user_id} (шаг {current_step}): {msg[:50]}...')
     
     # ════════════════════════════════════════════════════════════════════════
-    # ОБРАБОТКА ТЕКУЩЕГО ШАГА РЕГИСТРАЦИИ (ПРИОРИТЕТ ВЫШЕ!)
+    # ПРИОРИТЕТ 1: КОМАНДЫ УПРАВЛЕНИЯ (работают на ЛЮБОМ шаге регистрации)
     # ════════════════════════════════════════════════════════════════════════
     
-    if current_step == 1:
-        response, success = process_registration_step(user_id, 1, message_text)
-        send_message(user_id, response)
-        return
-    
-    elif current_step == 2:
-        response, success = process_registration_step(user_id, 2, message_text)
-        send_message(user_id, response)
-        return
-    
-    elif current_step == 3:
-        response, success = process_registration_step(user_id, 3, message_text)
-        send_message(user_id, response)
-        return
-    
-    elif current_step == 4:
-        response, success = process_registration_step(user_id, 4, message_text)
-        send_message(user_id, response)
-        return
-    
-    elif current_step == 5:
-        response, success = process_registration_step(user_id, 5, message_text)
-        send_message(user_id, response)
-        return
-    
-    elif current_step == 6:
-        response, success = process_registration_step(user_id, 6, message_text)
-        send_message(user_id, response)
-        return
-    
-    elif current_step == 7:
-        response, success = process_registration_step(user_id, 7, message_text)
-        send_message(user_id, response)
-        return
-    
-    elif current_step == 8:  # Подтверждение
-        if msg == 'да' or msg == 'да!' or msg == 'подтверждаю':
-            response = get_registration_complete(user_registration_data[user_id])
-            save_registration(user_id, user_registration_data[user_id])
+    if current_step > 0:  # Если пользователь в процессе регистрации
+        
+        if msg in ['отмена', 'отмена!', 'выход']:
             user_registration_data[user_id]['step'] = 0
-            send_message(user_id, response)
+            send_message(user_id, '''❌ РЕГИСТРАЦИЯ ОТМЕНЕНА
+
+Если хотите начать регистрацию заново, напишите "запись"
+или выберите команду из справки - "помощь"''')
             return
-        elif msg == 'нет' or msg == 'исправить':
-            user_registration_data[user_id]['step'] = 1
-            send_message(user_id, 'Начнём сначала!\n\n' + get_registration_step_1())
+        
+        if msg in ['назад', 'назад!', '<<<']:
+            new_step = current_step - 1
+            if new_step < 1:
+                new_step = 1
+                send_message(user_id, '⚠️ Вы уже на первом вопросе!')
+                return
+            
+            user_registration_data[user_id]['step'] = new_step
+            
+            # Вернуть на нужный шаг
+            if new_step == 1:
+                send_message(user_id, get_registration_step_1())
+            elif new_step == 2:
+                send_message(user_id, get_registration_step_2())
+            elif new_step == 3:
+                send_message(user_id, get_registration_step_3())
+            elif new_step == 4:
+                send_message(user_id, get_registration_step_4())
+            elif new_step == 5:
+                send_message(user_id, get_registration_step_5())
+            elif new_step == 6:
+                send_message(user_id, get_registration_step_6())
+            elif new_step == 7:
+                age = int(user_registration_data[user_id].get('child_age', 0))
+                send_message(user_id, get_registration_step_7(age))
+            
             return
-        elif msg == 'отмена':
-            user_registration_data[user_id]['step'] = 0
-            send_message(user_id, '❌ Регистрация отменена.')
-            return
-        else:
-            send_message(user_id, '❓ Пожалуйста, ответьте "да" или "нет"')
+        
+        if msg in ['начать заново', 'начать с начала', 'заново', 'заново!']:
+            user_registration_data[user_id] = {'step': 1}
+            send_message(user_id, get_registration_step_1())
             return
     
     # ════════════════════════════════════════════════════════════════════════
-    # ОБРАБОТКА КОМАНД И ЗАПРОСОВ (ЕСЛИ НЕ В ПРОЦЕССЕ РЕГИСТРАЦИИ)
+    # ПРИОРИТЕТ 2: ОБРАБОТКА АКТИВНОГО СЦЕНАРИЯ РЕГИСТРАЦИИ
     # ════════════════════════════════════════════════════════════════════════
     
-    if 'запись' in msg or 'регистрация' in msg:
+    if current_step >= 1 and current_step <= 8:
+        response, success = process_registration_step(user_id, current_step, message_text)
+        send_message(user_id, response)
+        return
+    
+    # ════════════════════════════════════════════════════════════════════════
+    # ПРИОРИТЕТ 3: ОБЩИЕ КОМАНДЫ (только если НЕ в регистрации)
+    # ════════════════════════════════════════════════════════════════════════
+    
+    if 'запись' in msg or 'регистрация' in msg or 'зарегистрировать' in msg:
         user_registration_data[user_id]['step'] = 1
         send_message(user_id, get_registration_step_1())
         return
@@ -1328,10 +1430,8 @@ def handle_user_message(user_id: int, message_text: str):
     if re.search(r'\d{10,15}', message_text) and current_step == 0:
         is_valid, result = validate_phone(message_text)
         if is_valid:
-            # Сохраняем номер в данные пользователя
             user_registration_data[user_id]['phone_only'] = result
             
-            # Отправляем ответ пользователю
             response_text = f'''✅ Спасибо! Номер телефона {result} получен!
 
 📞 Наш отдел заботы с вами свяжется в течение часа!
@@ -1340,7 +1440,6 @@ def handle_user_message(user_id: int, message_text: str):
             
             send_message(user_id, response_text)
             
-            # Отправляем уведомление администратору
             admin_data = {
                 'parent_name': 'Не указано',
                 'program_name': 'Интересуется общей информацией',
@@ -1351,8 +1450,7 @@ def handle_user_message(user_id: int, message_text: str):
             return
     
     # Если ничего не подошло
-    else:
-        send_message(user_id, f'''❓ Я не совсем понимаю: "{message_text}"
+    send_message(user_id, f'''❓ Я не совсем понимаю: "{message_text}"
 
 Напишите:
 📋 "помощь" - справка по командам
@@ -1361,7 +1459,7 @@ def handle_user_message(user_id: int, message_text: str):
 📞 "контакты" - как с нами связаться
 
 Или напишите свой вопрос - постараюсь помочь! 💬''')
-        return
+    return
 
 # ═══════════════════════════════════════════════════════════════════════════
 # FLASK ROUTES
