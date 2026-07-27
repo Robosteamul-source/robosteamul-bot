@@ -1,581 +1,1396 @@
+# -*- coding: utf-8 -*-
 """
-РобоСТЕАМ Bot v3.2 - УЛУЧШЕННАЯ ВЕРСИЯ
-Высокое качество ответов, контекстный анализ, умные рекомендации
-БЕЗ СТОРОННИХ СЕРВИСОВ - только внутренние улучшения!
-
-Автор улучшений: Claude
-Дата: 2024
+РобоСТЕАМ Бот для VK - Улучшенная версия 3.0
+Автор: AI Assistant
+Версия: 3.0
+Новые возможности:
+- Улучшенная обработка возраста (цифры, слова, диапазоны)
+- Умные рекомендации программ по возрасту
+- Расширенное мышление бота с контекстным анализом
+- Предложение программ на основе данных ребенка
 """
 
-from typing import Dict, List, Optional, Tuple
-from datetime import datetime
-from enum import Enum
+from flask import Flask, request
+import requests
+import os
 import json
+import logging
+from datetime import datetime
+from typing import Dict, Optional, Tuple, List
+import re
 
-# ════════════════════════════════════════════════════════════════════════════
-# НОВОЕ: АНАЛИЗ НАСТРОЕНИЯ И КОНТЕКСТА ПОЛЬЗОВАТЕЛЯ
-# ════════════════════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════════
+# КОНФИГУРАЦИЯ И КОНСТАНТЫ
+# ═══════════════════════════════════════════════════════════════════════════
 
-class UserMood(Enum):
-    """Определенное настроение пользователя"""
-    CONFUSED = "confused"        # Запутался
-    FRUSTRATED = "frustrated"    # Раздражен
-    CURIOUS = "curious"          # Заинтересован
-    CALM = "calm"                # Спокоен
-    EXCITED = "excited"          # Воодушевлен
-    NEUTRAL = "neutral"          # Нейтрален
+app = Flask(__name__)
 
+# Получение токенов из переменных окружения
+VK_TOKEN = os.getenv('VK_TOKEN', '')
+VK_SECRET = os.getenv('VK_SECRET', '')
+VK_CONFIRMATION_TOKEN = os.getenv('VK_CONFIRMATION_TOKEN', '43a38a83')
 
-class UserContext:
-    """
-    Контекст пользователя - полная история и анализ
-    НОВОЕ в v3.2: Умная память о пользователе
-    """
+# ID администратора для отправки уведомлений
+ADMIN_ID = 441534266
+
+# Контакты отдела заботы
+CARE_TEAM = [
+    {'name': 'Наталья', 'phone': '+7 (922) 014-44-94'},
+    {'name': 'Ксения', 'phone': '+7 (904) 805-25-61'},
+    {'name': 'Жанна', 'phone': '+7 (951) 239-86-49'}
+]
+
+# Логирование
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Константы для этапов регистрации
+REGISTRATION_STEPS = {
+    0: 'start',
+    1: 'child_name',
+    2: 'child_age',
+    3: 'kindergarten',
+    4: 'group_number',
+    5: 'parent_name',
+    6: 'parent_phone',
+    7: 'program_choice',
+    8: 'completed'
+}
+
+# Программы обучения С РАСШИРЕННОЙ ИНФОРМАЦИЕЙ
+PROGRAMS = {
+    'robo_34': {
+        'name': 'Робототехника РобоСТЕАМ',
+        'age': '3-4 года',
+        'age_range': (3, 4),
+        'description': 'Первые шаги в мир робототехники. Развитие логического мышления и мелкой моторики.',
+        'price': '300 руб за занятие',
+        'emoji': '🤖',
+        'benefits': ['Логическое мышление', 'Мелкая моторика', 'Первичные навыки конструирования']
+    },
+    'brick': {
+        'name': 'Робототехника РобоСТЕАМ Брик',
+        'age': '5-6 лет',
+        'age_range': (5, 6),
+        'description': 'Построение и программирование роботов. Основы конструирования и алгоритмики.',
+        'price': '300 руб за занятие',
+        'emoji': '🧱',
+        'benefits': ['Программирование основы', 'Конструирование', 'Пространственное мышление']
+    },
+    'pro': {
+        'name': 'Робототехника РобоСТЕАМ Про',
+        'age': '6-8 лет',
+        'age_range': (6, 8),
+        'description': 'Продвинутое программирование и создание сложных роботов. Участие в соревнованиях.',
+        'price': '400 руб за занятие',
+        'emoji': '⚙️',
+        'benefits': ['Продвинутое программирование', 'Участие в соревнованиях', 'Решение сложных задач']
+    },
+    'dance': {
+        'name': 'Хореография',
+        'age': '3-8 лет',
+        'age_range': (3, 8),
+        'description': 'Развитие танца, ритма и координации. Творческие номера и выступления.',
+        'price': '350 руб за занятие',
+        'emoji': '💃',
+        'benefits': ['Координация', 'Ритм', 'Творческое самовыражение', 'Сценическое мастерство']
+    },
+    'logoped': {
+        'name': 'Логопед и развитие речи',
+        'age': '3-7 лет',
+        'age_range': (3, 7),
+        'description': 'Коррекция звукопроизношения и развитие речи. Индивидуальные занятия.',
+        'price': '600 руб за занятие (диагностика +800 руб)',
+        'emoji': '🗣️',
+        'benefits': ['Коррекция речи', 'Развитие речи', 'Индивидуальный подход']
+    },
+    'school_2': {
+        'name': 'Дошколёнок за два года до Школы',
+        'age': '4-5 лет',
+        'age_range': (4, 5),
+        'description': 'Комплексная подготовка к школе. Грамота, арифметика, познавательно-речевое развитие.',
+        'price': '350 руб за занятие',
+        'emoji': '📚',
+        'benefits': ['Подготовка к школе', 'Грамотность', 'Основы математики', 'Развитие памяти']
+    },
+    'school_1': {
+        'name': 'Дошколёнок за год до Школы',
+        'age': '6-7 лет',
+        'age_range': (6, 7),
+        'description': 'Интенсивная подготовка в выпускной год. Освоение школьных навыков и самодисциплины.',
+        'price': '375 руб за занятие',
+        'emoji': '✏️',
+        'benefits': ['Интенсивная подготовка', 'Школьные навыки', 'Самодисциплина', 'Психологическая готовность']
+    }
+}
+
+# Словарь для преобразования текста в числа
+AGE_WORDS = {
+    'три': 3, 'три года': 3, 'трех лет': 3,
+    'четыре': 4, 'четыре года': 4, 'четырех лет': 4,
+    'пять': 5, 'пять лет': 5, 'пяти лет': 5,
+    'шесть': 6, 'шесть лет': 6, 'шести лет': 6,
+    'семь': 7, 'семь лет': 7, 'семи лет': 7,
+    'восемь': 8, 'восемь лет': 8, 'восьми лет': 8,
+    'девять': 9, 'девять лет': 9, 'девяти лет': 9,
+    'десять': 10, 'десять лет': 10, 'десяти лет': 10,
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# БАЗА ДЕТСКИХ САДОВ ROBOSTEA MUL
+# ═══════════════════════════════════════════════════════════════════════════
+
+KINDERGARTENS = {
+    30: {
+        'name': 'ДОУ №30',
+        'address': 'Зальцмана 24',
+        'location': 'Центр',
+        'programs': ['robo_34', 'brick', 'pro', 'logoped', 'dance', 'school_2', 'school_1']
+    },
+    30.1: {
+        'name': 'ДОУ №30СП',
+        'address': 'Зальцмана 38',
+        'location': 'Центр',
+        'programs': ['robo_34', 'brick', 'pro', 'logoped', 'dance', 'school_2', 'school_1']
+    },
+    44: {
+        'name': 'ДОУ №44',
+        'address': 'Конструктора Духова 25',
+        'location': 'Северо-Восток',
+        'programs': ['robo_34', 'brick', 'pro', 'dance']
+    },
+    44.1: {
+        'name': 'ДОУ №44СП',
+        'address': 'Конструктора Духова 9',
+        'location': 'Северо-Восток',
+        'programs': ['dance']
+    },
+    475: {
+        'name': 'ДОУ №475',
+        'address': 'Салютная 17а',
+        'location': 'Юг',
+        'programs': ['robo_34', 'brick', 'pro', 'dance']
+    },
+    475.1: {
+        'name': 'ДОУ №475',
+        'address': 'Горького 25а',
+        'location': 'Юго-Восток',
+        'programs': ['robo_34', 'brick', 'pro', 'dance']
+    },
+    416: {
+        'name': 'ДОУ №416',
+        'address': 'Культуры 59а',
+        'location': 'Восток',
+        'programs': ['robo_34', 'brick', 'pro']
+    },
+    413: {
+        'name': 'ДОУ №413',
+        'address': 'Доватора 18а',
+        'location': 'Запад',
+        'programs': ['robo_34', 'brick', 'pro', 'dance']
+    },
+    369: {
+        'name': 'ДОУ №369',
+        'address': 'Танкистов 152Б',
+        'location': 'Юго-Запад',
+        'programs': ['robo_34', 'brick', 'pro', 'school_2', 'school_1']
+    },
+    221: {
+        'name': 'ДОУ №221СП',
+        'address': 'Бажова 24а',
+        'location': 'Центр-Запад',
+        'programs': ['robo_34', 'brick', 'pro', 'dance']
+    },
+    418: {
+        'name': 'ДОУ №418',
+        'address': 'Шуменская 8',
+        'location': 'Север',
+        'programs': ['robo_34', 'brick', 'pro', 'dance']
+    },
+    262: {
+        'name': 'ДОУ №262',
+        'address': 'Шуменская 45',
+        'location': 'Север',
+        'programs': ['robo_34', 'brick', 'pro']
+    },
+    351: {
+        'name': 'ДОУ №351',
+        'address': 'Артиллерийская 61а',
+        'location': 'Северо-Запад',
+        'programs': ['robo_34', 'brick', 'pro']
+    },
+    421: {
+        'name': 'ДОУ №421',
+        'address': 'Руставели 4а',
+        'location': 'Центр-Восток',
+        'programs': ['robo_34', 'brick', 'pro', 'dance']
+    },
+    448: {
+        'name': 'ДОУ №448',
+        'address': 'Агалакова 50а',
+        'location': 'Запад',
+        'programs': ['robo_34', 'brick', 'pro']
+    },
+    448.1: {
+        'name': 'ДОУ №448СП',
+        'address': 'Гранитная 4',
+        'location': 'Запад',
+        'programs': ['robo_34', 'brick', 'pro', 'dance', 'school_2', 'school_1']
+    },
+    10: {
+        'name': 'ДОУ №10 (Копейск)',
+        'address': 'Международная 76а',
+        'location': 'Копейск',
+        'programs': ['robo_34', 'brick', 'pro']
+    },
+    48: {
+        'name': 'ДОУ №48',
+        'address': 'Маршала Чуйкова 25Б',
+        'location': 'Северо-Запад',
+        'programs': ['robo_34', 'brick', 'pro']
+    },
+    18: {
+        'name': 'ДОУ №18',
+        'address': 'Скульптура Головницкого 18',
+        'location': 'Центр',
+        'programs': ['robo_34', 'brick', 'pro']
+    },
+    18.1: {
+        'name': 'ДОУ №18СП',
+        'address': 'Бейвеля 38',
+        'location': 'Центр',
+        'programs': ['robo_34', 'brick', 'pro']
+    }
+}
+
+# Территории для быстрого поиска
+TERRITORIES = {
+    'центр': [30, 30.1, 221, 18, 18.1, 421],
+    'север': [418, 262],
+    'северо-запад': [351, 48],
+    'северо-восток': [44, 44.1],
+    'восток': [416],
+    'юго-восток': [475.1],
+    'юг': [475],
+    'юго-запад': [369],
+    'запад': [413, 448, 448.1],
+    'центр-запад': [221],
+    'центр-восток': [421],
+    'копейск': [10]
+}
+
+# Хранилище данных пользователей
+user_registration_data: Dict = {}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# РАСШИРЕННЫЕ ФУНКЦИИ ВАЛИДАЦИИ И АНАЛИЗА
+# ═══════════════════════════════════════════════════════════════════════════
+
+def validate_fio(name: str) -> Tuple[bool, str]:
+    """Проверяет корректность ФИО (улучшенная версия с распознаванием имен)"""
+    name = name.strip()
     
-    def __init__(self, user_id: int):
-        self.user_id = user_id
-        self.dialog_history: List[Dict] = []
-        self.error_count = 0
-        self.successful_steps = 0
-        self.last_interaction = datetime.now()
-        self.detected_interests: List[str] = []
-        self.user_mood = UserMood.NEUTRAL
-        self.preferred_response_style = "friendly"  # friendly | formal | brief
-        self.is_first_time = True
-        self.confusion_detected = False
-        self.help_requests = 0
-        
-    def add_message(self, role: str, content: str, field: str = None):
-        """Добавить сообщение в историю"""
-        self.dialog_history.append({
-            'timestamp': datetime.now(),
-            'role': role,  # user | bot
-            'content': content,
-            'field': field  # на каком шаге
-        })
-        self.last_interaction = datetime.now()
-    
-    def detect_user_mood(self) -> UserMood:
-        """
-        Определить настроение пользователя по истории
-        НОВОЕ в v3.2: Анализ эмоционального состояния
-        """
-        if not self.dialog_history:
-            return UserMood.NEUTRAL
-        
-        recent_messages = self.dialog_history[-3:]
-        user_messages = [m for m in recent_messages if m['role'] == 'user']
-        
-        frustrated_indicators = ['не', 'не могу', 'сложно', 'не понимаю', '?????', 'что']
-        curious_indicators = ['интересно', 'как', 'почему', 'расскажи', 'подробнее']
-        excited_indicators = ['да!', 'отлично', 'супер', '!!!', 'круто', 'спасибо']
-        confused_indicators = ['?', 'что это', 'не разобрал', 'еще раз', 'повтори']
-        
-        mood_scores = {
-            UserMood.FRUSTRATED: 0,
-            UserMood.CURIOUS: 0,
-            UserMood.EXCITED: 0,
-            UserMood.CONFUSED: 0,
-            UserMood.CALM: 0
-        }
-        
-        for msg in user_messages:
-            text = msg['content'].lower()
-            if any(ind in text for ind in frustrated_indicators):
-                mood_scores[UserMood.FRUSTRATED] += 1
-            if any(ind in text for ind in curious_indicators):
-                mood_scores[UserMood.CURIOUS] += 1
-            if any(ind in text for ind in excited_indicators):
-                mood_scores[UserMood.EXCITED] += 1
-            if any(ind in text for ind in confused_indicators):
-                mood_scores[UserMood.CONFUSED] += 1
-        
-        # Если много ошибок - скорее всего запутался
-        if self.error_count > 2:
-            mood_scores[UserMood.CONFUSED] += 2
-        
-        # Определить самое высокое настроение
-        if all(v == 0 for v in mood_scores.values()):
-            return UserMood.NEUTRAL
-        
-        self.user_mood = max(mood_scores.items(), key=lambda x: x[1])[0]
-        return self.user_mood
-    
-    def record_error(self, field: str, value: str):
-        """Записать ошибку"""
-        self.error_count += 1
-        self.add_message('system', f'Error: {value}', field)
-        self.confusion_detected = self.error_count > 1
-    
-    def record_success(self, field: str, value: str):
-        """Записать успешный ввод"""
-        self.successful_steps += 1
-        self.add_message('system', f'Success: {value}', field)
-        # Немного снизить ошибки при успехе
-        if self.error_count > 0:
-            self.error_count -= 1
-    
-    def extract_interests(self) -> List[str]:
-        """
-        Извлечь интересы пользователя из истории
-        НОВОЕ в v3.2: Умное обнаружение интересов
-        """
-        if self.detected_interests:
-            return self.detected_interests
-        
-        interests_keywords = {
-            'танец': ['танец', 'хореография', 'ритм', 'движение', 'танцы'],
-            'робо': ['робот', 'робототехника', 'конструирование', 'лего', 'строить'],
-            'речь': ['речь', 'логопед', 'слова', 'говорить', 'произношение'],
-            'школа': ['школа', 'подготовка', 'учеба', 'знания', 'буквы'],
-        }
-        
-        for msg in self.dialog_history:
-            if msg['role'] == 'user':
-                text = msg['content'].lower()
-                for interest, keywords in interests_keywords.items():
-                    if any(kw in text for kw in keywords):
-                        if interest not in self.detected_interests:
-                            self.detected_interests.append(interest)
-        
-        return self.detected_interests
-    
-    def should_offer_help(self) -> bool:
-        """Нужно ли предложить помощь?"""
-        # Если ошибок больше чем успехов - значит запутался
-        if self.error_count > self.successful_steps:
-            return True
-        
-        # Если долго ничего не происходит
-        if (datetime.now() - self.last_interaction).total_seconds() > 60:
-            return True
-        
-        # Если много запросов помощи
-        if self.help_requests > 2:
-            return True
-        
-        return False
-
-
-# ════════════════════════════════════════════════════════════════════════════
-# НОВОЕ: УМНЫЙ АНАЛИЗ НАМЕРЕНИЙ
-# ════════════════════════════════════════════════════════════════════════════
-
-class IntentAnalyzer:
-    """
-    Анализ истинного намерения пользователя
-    НОВОЕ в v3.2: Контекстное понимание
-    """
-    
-    @staticmethod
-    def analyze(text: str, context: UserContext) -> Dict:
-        """
-        Анализировать свободный текст пользователя
-        Возвращает: {'intent': str, 'confidence': float, 'entities': dict}
-        """
-        text_lower = text.lower().strip()
-        
-        # Простые намерения
-        simple_intents = {
-            'start_registration': ['запис', 'хочу запис', 'запись', 'регистр'],
-            'get_help': ['помощь', 'помоги', 'не понимаю', 'помогите', 'как это'],
-            'get_info': ['расскажи', 'информация', 'подробнее', 'что это', 'как'],
-            'show_programs': ['программ', 'направления', 'что у вас есть'],
-            'cancel': ['отмена', 'выход', 'не хочу', 'стоп', 'хватит'],
-            'back': ['назад', 'назад!', 'вернуться', '<<<'],
-        }
-        
-        for intent, keywords in simple_intents.items():
-            if any(kw in text_lower for kw in keywords):
-                return {
-                    'intent': intent,
-                    'confidence': 0.9,
-                    'entities': {}
-                }
-        
-        # Сложное распознавание: возраст
-        import re
-        age_match = re.search(r'(\d+)\s*(?:год|лет|года)', text)
-        if age_match:
-            age = int(age_match.group(1))
-            if 2 <= age <= 12:
-                return {
-                    'intent': 'provide_age',
-                    'confidence': 0.95,
-                    'entities': {'age': age}
-                }
-        
-        # Если много вопросов - user запутался
-        if text.count('?') > 1:
-            return {
-                'intent': 'confusion_detected',
-                'confidence': 0.7,
-                'entities': {}
-            }
-        
-        # Default: обычное сообщение
-        return {
-            'intent': 'generic_message',
-            'confidence': 0.5,
-            'entities': {}
-        }
-
-
-# ════════════════════════════════════════════════════════════════════════════
-# НОВОЕ: УМНЫЙ РЕКОМЕНДАТОР ПРОГРАММ
-# ════════════════════════════════════════════════════════════════════════════
-
-class SmartRecommender:
-    """
-    Умные рекомендации программ
-    НОВОЕ в v3.2: Анализ интересов и особенностей
-    """
-    
-    @staticmethod
-    def calculate_program_fit(
-        age: int, 
-        interests: List[str],
-        programs: Dict,
-        context: UserContext
-    ) -> List[Tuple[str, float, str]]:
-        """
-        Рассчитать подходящие программы с обоснованием
-        Возвращает: [(program_code, score, reason), ...]
-        """
-        recommendations = []
-        
-        for code, program in programs.items():
-            score = 0.0
-            reasons = []
-            
-            # Проверка по возрасту
-            if program['age_min'] <= age <= program['age_max']:
-                score += 40
-                reasons.append(f"подходит по возрасту {age} лет")
-            elif program['age_min'] <= age <= program['age_max'] + 1:
-                score += 20
-                reasons.append(f"подходит для возраста чуть старше")
-            
-            # Проверка по интересам
-            if 'танец' in interests and 'dance' in code.lower():
-                score += 30
-                reasons.append("совпадает с интересом к танцам")
-            if 'робо' in interests and ('robot' in code.lower() or 'robo' in code.lower()):
-                score += 30
-                reasons.append("совпадает с интересом к робототехнике")
-            if 'речь' in interests and 'logoped' in code.lower():
-                score += 30
-                reasons.append("совпадает с интересом к развитию речи")
-            if 'школа' in interests and 'school' in code.lower():
-                score += 30
-                reasons.append("совпадает с интересом к подготовке")
-            
-            # Первый раз? Рекомендуем популярные
-            if context.is_first_time and code in ['robo_stim', 'brick', 'dance']:
-                score += 10
-                reasons.append("популярная программа для начинающих")
-            
-            if score > 0:
-                reason = " • ".join(reasons)
-                recommendations.append((code, score, reason))
-        
-        # Отсортировать поScore
-        recommendations.sort(key=lambda x: x[1], reverse=True)
-        return recommendations
-
-
-# ════════════════════════════════════════════════════════════════════════════
-# НОВОЕ: УМНАЯ ОБРАБОТКА ОШИБОК
-# ════════════════════════════════════════════════════════════════════════════
-
-class SmartErrorHandler:
-    """
-    Умная обработка ошибок ввода
-    НОВОЕ в v3.2: Помощь вместо критики
-    """
-    
-    @staticmethod
-    def handle_age_error(value: str, user_age: Optional[int] = None) -> str:
-        """Помощь при ошибке ввода возраста"""
-        
-        # Попытка извлечь число
-        import re
-        match = re.search(r'\d+', value)
-        
-        if match:
-            attempted_age = int(match.group())
-            if attempted_age < 2:
-                return f"""❓ Малыш еще очень маленький ({attempted_age} года).
-К сожалению, наши программы начинаются с 3 лет.
-
-💡 Подождите чуть-чуть! 🎂 
-За полгода-год ребенок подрастет, и тогда можно начать занятия!
-
-Или может быть вы опечатались? 😊"""
-            elif attempted_age > 12:
-                return f"""❓ Отлично, что ваш ребенок уже {attempted_age} лет!
-
-К сожалению, наша программа для детей до 12 лет.
-Для ребенка старшего возраста рекомендуем позвонить Наталье:
-📞 +7 (922) 014-44-94
-
-Она подберет что-то подходящее! 😊"""
-        
-        return """❓ Кажется, я не разобрал возраст.
-
-💡 Напишите просто цифру:
-   • 3 или 4 или 5
-   • три или четыре
-   • '3 года' или '4 года'
-
-Я поймаю любой формат! 😊"""
-    
-    @staticmethod
-    def handle_phone_error(value: str, last_error: Optional[str] = None) -> str:
-        """Помощь при ошибке в телефоне"""
-        
-        if last_error == "too_short":
-            return """📞 Кажется, номер получился коротковатым.
-
-Для России обычно 10-11 цифр:
-   ✅ Правильно: +7 (921) 123-45-67
-   ✅ Или так: 8-921-123-45-67
-   ✅ Или просто: 89211234567
-
-💡 Совет: скопируйте номер из телефона - так точнее! 📱
-
-Напишите номер еще раз:"""
-        
-        return """📞 Проверьте номер телефона.
-
-Нам нужно 10-11 цифр для России:
-   ✅ +7 900 123-45-67
-   ✅ 8-921-123-45-67  
-   ✅ 89211234567
-
-❌ Неправильно: текст, спецсимволы кроме (+, -, пробел)
-
-💡 Если затрудняетесь - позвоните в офис:
-📞 +7 (922) 014-44-94 (Наталья)
-
-Давайте еще раз? 😊"""
-    
-    @staticmethod
-    def handle_name_error(value: str) -> str:
-        """Помощь при ошибке в ФИО"""
-        
-        return f"""❓ С ФИО что-то не то: '{value}'
-
-Используйте только буквы и дефисы, без цифр:
-   ✅ Правильно: Петров Иван
-   ✅ Правильно: Сидорова-Петрова Мария
-   
-   ❌ Неправильно: Петров123, Ivan, $$$
-
-💡 Напишите ФИО как в свидетельстве о рождении.
-Отчество (3-е слово) - необязательно!
-
-Попробуем еще раз? 😊"""
-
-
-# ════════════════════════════════════════════════════════════════════════════
-# НОВОЕ: КРАСИВОЕ ФОРМАТИРОВАНИЕ СООБЩЕНИЙ
-# ════════════════════════════════════════════════════════════════════════════
-
-class MessageFormatter:
-    """
-    Красивое и понятное форматирование сообщений
-    НОВОЕ в v3.2: Профессиональный стиль
-    """
-    
-    @staticmethod
-    def format_welcome(user_name: Optional[str] = None) -> str:
-        """Приветствие"""
-        greeting = "Привет" if not user_name else f"Привет, {user_name.split()[0]}"
-        
-        return f"""{greeting}! 👋
-
-Я помощник RoboSTEAMuL. 🤖
-
-Помогу вам:
-   🎯 Подобрать идеальную программу по возрасту
-   📋 Оформить запись ребенка
-   💬 Ответить на все вопросы
-
-Что вас интересует?
-
-   📝 Записать ребенка
-   🎨 Узнать о направлениях
-   ❓ Задать вопрос
-   📞 Контакты"""
-    
-    @staticmethod
-    def format_program_recommendation(
-        program_code: str,
-        program: Dict,
-        age: int,
-        reasons: str
-    ) -> str:
-        """Красиво отформатировать рекомендацию программы"""
-        
-        emoji = program.get('emoji', '✨')
-        
-        return f"""⭐ {emoji} {program['name'].upper()}
-
-💡 Почему эта программа идеальна?
-   {reasons}
-
-📊 Что вы получите:
-   ✓ {program['description']}
-   ✓ Возраст: {program['age_min']}-{program['age_max']} лет
-   ✓ Цена: {program['price']}/занятие
-   ✓ Группы до 8 детей
-   ✓ Первое занятие БЕСПЛАТНО! 🎁
-
-📞 Вопросы? Позвоните Наталье: +7 (922) 014-44-94
-
-➡️ Выбираете эту программу? 😊"""
-    
-    @staticmethod
-    def format_help_message(context: UserContext) -> str:
-        """Предложить помощь"""
-        
-        mood_emoji = {
-            'confused': '🤔',
-            'frustrated': '😟',
-            'neutral': '😊',
-            'curious': '👀',
-        }
-        
-        emoji = mood_emoji.get(context.user_mood.value, '😊')
-        
-        return f"""{emoji} Кажется, вы затруднились?
-
-Не беда! Я здесь, чтобы помочь:
-
-💡 Вот что я могу сделать:
-   • Повторить вопрос другими словами
-   • Привести больше примеров
-   • Объяснить зачем нужна информация
-   • Позвать Наталью (живого человека!)
-
-❓ Что вам нужно помощь?
-
-   1️⃣ Еще примеры правильного ввода
-   2️⃣ Объяснить вопрос подробнее
-   3️⃣ Позвонить Наталье: +7 (922) 014-44-94
-   4️⃣ Начать заново"""
-
-
-# ════════════════════════════════════════════════════════════════════════════
-# НОВОЕ: ИНТЕЛЛЕКТУАЛЬНЫЕ ПОДСКАЗКИ
-# ════════════════════════════════════════════════════════════════════════════
-
-def should_provide_hint(context: UserContext, field: str) -> bool:
-    """Нужно ли показать подсказку на этом шаге?"""
-    
-    # На третьей ошибке точно показать подсказку
-    if context.error_count >= 3:
-        return True
-    
-    # Если пользователь запутался
-    if context.confusion_detected:
-        return True
-    
-    # Если много помощи запросил
-    if context.help_requests > 1:
-        return True
-    
-    return False
-
-
-def generate_intelligent_hint(field: str, user_input: str) -> str:
-    """
-    Умная подсказка на основе ошибки
-    НОВОЕ в v3.2: Контекстные подсказки
-    """
-    
-    hints = {
-        'child_fio': """💡 ФИО - это как в свидетельстве о рождении:
-   • Фамилия (Петров)
-   • Имя (Иван)
-   • Отчество (Сергеевич) - необязательно
-   
-Примеры:
-   ✅ Петров Иван
-   ✅ Сидорова Мария Ивановна""",
-        
-        'child_age': """💡 Возраст - просто цифра:
-   ✅ 3
-   ✅ пять
-   ✅ '4 года'
-   
-Наши программы для детей 3-12 лет.""",
-        
-        'kindergarten_number': """💡 Номер сада - это цифры:
-   ✅ 30
-   ✅ №30
-   ✅ 30 СП
-   ✅ Нет (если не ходит)""",
-        
-        'parent_phone': """💡 Телефон - 10-11 цифр:
-   ✅ +7 900 123-45-67
-   ✅ 89211234567
-   
-Не забудьте код страны/оператора!""",
+    # Список распространенных русских имен для распознавания
+    COMMON_NAMES = {
+        'иван', 'алексей', 'сергей', 'петр', 'павел', 'андрей', 'дмитрий', 'владимир',
+        'константин', 'геннадий', 'виктор', 'юрий', 'борис', 'игорь', 'леонид', 'валентин',
+        'анатолий', 'николай', 'евгений', 'александр', 'максим', 'денис', 'олег', 'михаил',
+        'мария', 'анна', 'елена', 'екатерина', 'наталья', 'ирина', 'валентина', 'ольга',
+        'татьяна', 'александра', 'дарья', 'юлия', 'виктория', 'полина', 'софья', 'карина',
+        'кристина', 'марина', 'лариса', 'светлана', 'зоя', 'галина', 'лилия', 'вероника',
+        'евгения', 'людмила', 'тамара', 'раиса', 'надежда', 'маргарита', 'жанна', 'ксения',
+        'никита', 'илья', 'артем', 'кирилл', 'станислав', 'ростислав', 'владислав', 'игнат',
+        'глеб', 'матвей', 'тимур', 'саша', 'маша', 'ваня', 'коля', 'вова', 'гена', 'кристя'
     }
     
-    return hints.get(field, "💡 Попробуйте еще раз. Я верю, что у вас получится! 😊")
+    # Список распространенных русских фамилий
+    COMMON_SURNAMES = {
+        'петров', 'сидоров', 'смирнов', 'иванов', 'соколов', 'волков', 'морозов', 'попов',
+        'кузнецов', 'лебедев', 'новиков', 'федоров', 'павлов', 'денисов', 'суздальцев',
+        'крылов', 'трифонов', 'комаров', 'охотников', 'никитин', 'третьяков', 'орлов',
+        'козлов', 'александров', 'сергеев', 'константинов', 'виноградов', 'зайцев',
+        'животов', 'соловьев', 'богданов', 'шустов', 'пушкин', 'лермонтов', 'чехов',
+        'толстой', 'достоевский', 'тургенев', 'бунин', 'цветаева', 'ахматова', 'берг',
+        'сизов', 'фёдоров', 'щербаков', 'еремин', 'проценко', 'антипов', 'серебряков'
+    }
+    
+    # Проверяем базовые условия
+    if len(name) < 2:
+        return False, "❌ Имя слишком короткое. Напишите полное имя ребенка (минимум 2 символа)"
+    
+    # Проверяем что это не только цифры и спецсимволы
+    if not any(c.isalpha() for c in name):
+        return False, "❌ Имя должно содержать буквы. Напишите имя ребенка буквами"
+    
+    # Проверяем кириллицу (русские символы)
+    if not all(c.isalpha() or c.isspace() or c == '-' for c in name):
+        return False, "❌ Пожалуйста используйте русские буквы. Пример: Иван Петров"
+    
+    # Разделяем на слова
+    words = name.split()
+    
+    # Если одно слово - проверяем что это хотя бы известное имя или фамилия
+    if len(words) == 1:
+        word_lower = words[0].lower()
+        if word_lower in COMMON_NAMES or word_lower in COMMON_SURNAMES:
+            return True, name
+        else:
+            # Если не распознали, просим добавить еще слово, но не отказываем
+            return True, name
+    
+    # Если два и больше слов - проверяем что хотя бы одно слово это известное имя
+    has_known_name = False
+    for word in words:
+        word_lower = word.lower()
+        if word_lower in COMMON_NAMES or word_lower in COMMON_SURNAMES:
+            has_known_name = True
+            break
+    
+    # Даже если не распознали имена, принимаем если больше одного слова
+    return True, name
 
+def validate_phone(phone: str) -> Tuple[bool, str]:
+    """Проверяет корректность номера телефона"""
+    # Удаляем все не-цифры
+    digits = re.sub(r'\D', '', phone)
+    
+    # Проверяем длину (обычно от 10 до 12 цифр для России)
+    if len(digits) < 10:
+        return False, "❌ Номер телефона слишком короткий. Напишите полный номер (например: +7 (921) 123-45-67)"
+    
+    if len(digits) > 15:
+        return False, "❌ Номер телефона слишком длинный. Проверьте и напишите заново"
+    
+    return True, phone
 
-# ════════════════════════════════════════════════════════════════════════════
-# НОВОЕ: ОТСЛЕЖИВАНИЕ ВЗАИМОДЕЙСТВИЯ
-# ════════════════════════════════════════════════════════════════════════════
-
-class InteractionAnalytics:
+def validate_age(age_str: str) -> Tuple[bool, str]:
     """
-    Аналитика взаимодействия (только локально, не отправляем никуда)
-    НОВОЕ в v3.2: Обучение на основе ошибок
+    УЛУЧШЕННАЯ функция для проверки возраста.
+    Теперь понимает: цифры, слова, диапазоны!
     """
+    age_str = age_str.lower().strip()
     
-    def __init__(self):
-        self.session_data = {}
+    # 1️⃣ Попытка прямого преобразования в цифру
+    try:
+        age = int(age_str)
+        if 1 <= age <= 18:
+            return True, str(age)
+        else:
+            return False, "❌ Возраст должен быть от 1 до 18 лет"
+    except ValueError:
+        pass
     
-    def track_step(self, user_id: int, step: str, success: bool, time_spent: float):
-        """Отследить прохождение шага"""
-        if user_id not in self.session_data:
-            self.session_data[user_id] = []
-        
-        self.session_data[user_id].append({
-            'step': step,
-            'success': success,
-            'time_spent': time_spent,
-            'timestamp': datetime.now()
-        })
+    # 2️⃣ Проверка словаря возраста (три, четыре, пять и т.д.)
+    if age_str in AGE_WORDS:
+        age = AGE_WORDS[age_str]
+        return True, str(age)
     
-    def get_hardest_step(self) -> Optional[str]:
-        """Найти самый сложный шаг для пользователя"""
-        if not self.session_data:
-            return None
+    # 3️⃣ Попытка извлечь цифру из текста
+    digit_match = re.search(r'\b([1-9]|1[0-8])\b', age_str)
+    if digit_match:
+        age = int(digit_match.group(1))
+        return True, str(age)
+    
+    # 4️⃣ Проверка на диапазон (например "от 5 до 6")
+    range_match = re.search(r'(?:от\s+)?([1-9]|1[0-8])\s*(?:до|-|по)\s*([1-9]|1[0-8])', age_str)
+    if range_match:
+        age1, age2 = int(range_match.group(1)), int(range_match.group(2))
+        avg_age = (age1 + age2) // 2
+        return True, str(avg_age)
+    
+    # Если ничего не подошло
+    return False, """❌ Не понимаю возраст. Напишите одним из способов:
+📌 Цифрой: 5, 6, 7
+📌 Словом: три, четыре, пять, шесть
+📌 Диапазоном: от 5 до 6, 5-6
+
+→ Попробуйте еще раз:"""
+
+def get_recommended_programs(age: int) -> List[str]:
+    """
+    УМНЫЙ АНАЛИЗ: Рекомендует программы на основе возраста ребенка
+    """
+    recommended = []
+    for key, program in PROGRAMS.items():
+        min_age, max_age = program['age_range']
+        if min_age <= age <= max_age:
+            recommended.append((key, program))
+    
+    # Сортируем по релевантности (точное совпадение сначала)
+    return sorted(recommended, key=lambda x: (abs(x[1]['age_range'][0] - age), x[0]))
+
+def analyze_user_context(user_id: int) -> Dict:
+    """
+    РАСШИРЕННОЕ МЫШЛЕНИЕ: Анализирует контекст пользователя
+    """
+    if user_id not in user_registration_data:
+        return {}
+    
+    data = user_registration_data[user_id]
+    age = int(data.get('child_age', 0))
+    
+    context = {
+        'age': age,
+        'name': data.get('child_name', ''),
+        'kindergarten': data.get('kindergarten', ''),
+        'recommended_programs': get_recommended_programs(age)
+    }
+    
+    return context
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ФУНКЦИИ ДЛЯ ФОРМИРОВАНИЯ СООБЩЕНИЙ (УЛУЧШЕННЫЕ)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def get_main_menu() -> str:
+    """Главное меню приветствия"""
+    return '''🎓 Добро пожаловать в РобоСТЕАМ! 🎓
+
+Мы предлагаем 7 образовательных программ для детей от 3 до 8 лет:
+• 🤖 Робототехника
+• 💃 Хореография
+• 🗣️ Развитие речи
+• 📚 Подготовка к школе
+
+Что вам интересно?
+→ Напишите "программы" для полного списка
+→ Напишите "запись" для регистрации ребенка
+→ Напишите "помощь" для подробной информации'''
+
+def get_hello_response() -> str:
+    """Ответ на приветствие"""
+    return '''🎉 Добрый день! Мы рады вас видеть! 🎉
+
+📋 Наши программы:
+1. 🤖 Робототехника РобоСТЕАМ (3-4 года) - 300 руб/занятие
+2. 🧱 Робототехника Брик (5-6 лет) - 300 руб/занятие
+3. ⚙️ Робототехника Про (6-8 лет) - 400 руб/занятие
+4. 💃 Хореография (3-8 лет) - 350 руб/занятие
+5. 🗣️ Логопед и развитие речи (3-7 лет) - 600 руб/занятие
+6. 📚 Дошколёнок за два года до Школы (4-5 лет) - 350 руб/занятие
+7. ✏️ Дошколёнок За год до Школы (6-7 лет) - 375 руб/занятие
+
+Чем мы можем помочь?
+→ "программы" - узнать подробнее о каждой программе
+→ "запись" - записать ребенка на занятия
+→ "контакты" - наши реквизиты'''
+
+def get_all_programs() -> str:
+    """Полный список всех программ"""
+    text = '''📚 ВСЕ ПРОГРАММЫ КОМПАНИИ ROBOSTEAMUL 📚
+
+'''
+    for i, (key, prog) in enumerate(PROGRAMS.items(), 1):
+        text += f'''{i}. {prog['emoji']} {prog['name']}
+   📅 Возраст: {prog['age']}
+   💰 Цена: {prog['price']}
+   📝 {prog['description']}\n\n'''
+    
+    text += '''📞 Для более подробной информации оставьте номер телефона свой и наш отдел заботы с вами свяжется!
+
+Или напишите "запись" чтобы записать ребенка на занятия! 🎯
+
+☎️ Также вы можете позвонить нам прямо сейчас!
+
+📱 ОТДЕЛ ЗАБОТЫ:
+   📞 +7 (922) 014-44-94 - Наталья
+   📞 +7 (904) 805-25-61 - Ксения
+   📞 +7 (951) 239-86-49 - Жанна'''
+    return text
+
+def get_program_details(program_key: str) -> Optional[str]:
+    """Информация о конкретной программе"""
+    program = PROGRAMS.get(program_key.lower())
+    
+    if not program:
+        return None
+    
+    # УЛУЧШЕНО: Добавлены преимущества программы
+    benefits_text = '\n   '.join([f"✅ {b}" for b in program.get('benefits', [])])
+    
+    text = f'''{program['emoji']} {program['name'].upper()} {program['emoji']}
+
+📅 Возраст: {program['age']}
+💰 Цена: {program['price']}
+
+📝 ОПИСАНИЕ:
+{program['description']}
+
+🎯 Преимущества программы:
+   {benefits_text}
+
+✨ ДОПОЛНИТЕЛЬНО:
+   ✓ Профессиональные педагоги
+   ✓ Современные методики обучения
+   ✓ Группы до 8 детей
+   ✓ Первое занятие - бесплатное!
+
+📞 Для более подробной информации оставьте номер телефона свой и наш отдел заботы с вами свяжется!
+
+☎️ Также вы можете позвонить нам прямо сейчас!
+
+📱 ОТДЕЛ ЗАБОТЫ:
+   📞 +7 (922) 014-44-94 - Наталья
+   📞 +7 (904) 805-25-61 - Ксения
+   📞 +7 (951) 239-86-49 - Жанна
+
+Хотите записать ребенка на эту программу?
+→ Напишите "запись" или "регистрация"'''
+    
+    return text
+
+def get_contacts() -> str:
+    """Контактная информация"""
+    return '''📞 КОНТАКТЫ ROBOSTEAMUL 📞
+
+📧 Email: info@robosteam.ru
+📱 Телефон: +7 (XXX) XXX-XX-XX
+📍 Адрес: Москва
+🌐 Сайт: www.robosteam.ru
+
+Как записать ребенка?
+   1️⃣ Напишите "запись" в этом чате
+   2️⃣ Заполните простую форму регистрации
+   3️⃣ Мы позвоним вам в течение 24 часов
+
+Дополнительно:
+✅ Бесплатная первая консультация
+✅ Возможна пробная неделя
+✅ Гибкое расписание занятий
+✅ Группы по возрастам и уровням'''
+
+def get_help() -> str:
+    """Справка по командам"""
+    return '''❓ СПРАВКА ПО КОМАНДАМ ❓
+
+Вот что я умею:
+
+📋 ИНФОРМАЦИЯ:
+   • "программы" - все наши курсы
+   • "контакты" - контактная информация
+   • "помощь" - эта справка
+
+📝 РЕГИСТРАЦИЯ:
+   • "запись" или "регистрация" - начать заполнение анкеты
+   • "отмена" - отменить текущую регистрацию
+
+📞 КОНСУЛЬТАЦИЯ:
+   • "контакты" - свяжитесь с нами по телефону
+   • Оставьте номер телефона - мы вам перезвоним!
+
+💬 ОБЩЕНИЕ:
+   • "привет", "здравствуйте" и т.д. - мой ответ
+   • "спасибо" - пожалуйста! 😊
+
+Нужна помощь? Просто напишите вопрос! 💬'''
+
+def get_registration_step_1() -> str:
+    """Первый вопрос анкеты"""
+    return '''✍️ НАЧИНАЕМ РЕГИСТРАЦИЮ! ✍️
+
+Заполните пожалуйста все поля (всего 7 вопросов)
+
+🔹 ВОПРОС 1️⃣ из 7️⃣
+
+Фамилия Имя Отчество ребенка
+
+Примеры: Петров Иван Сергеевич, Смирнова Мария Ивановна, Козлов Алексей
+
+→ Напишите фамилию, имя и отчество ребенка:'''
+
+def get_registration_step_2() -> str:
+    """
+    УЛУЧШЕННЫЙ вопрос номер 2 о возрасте ребенка
+    Теперь с подробными инструкциями и возможностью ввода по-разному
+    """
+    return '''👍 Спасибо! Продолжаем...
+
+🔹 ВОПРОС 2️⃣ из 7️⃣
+
+Сколько лет вашему ребенку? 👶
+
+Напишите возраст любым способом:
+📌 Цифрой: 3, 4, 5, 6, 7, 8
+📌 Словом: три, четыре, пять, шесть
+📌 Фразой: "три года", "4 года", "пяти лет"
+
+💡 ℹ️ Это поможет нам подобрать идеальную программу!
+
+→ Напишите возраст ребенка:'''
+
+def get_registration_step_2_with_recommendations(age: int, child_name: str = "") -> str:
+    """
+    УМНАЯ версия шага 2 с рекомендациями программ
+    """
+    name_text = f" {child_name}," if child_name else ""
+    recommended = get_recommended_programs(age)
+    
+    recommendations_text = ""
+    if recommended:
+        recommendations_text = "\n\n🎯 РЕКОМЕНДУЕМЫЕ ПРОГРАММЫ ДЛЯ ВОЗРАСТА " + str(age) + " ЛЕТ:\n"
+        for key, prog in recommended[:3]:  # Показываем топ 3
+            recommendations_text += f"   {prog['emoji']} {prog['name']} - {prog['age']}\n"
+        recommendations_text += "\n(Расскажу подробнее на следующем шаге!)\n"
+    
+    return f'''✨ Отлично{name_text} сохранил возраст!
+
+Возраст ребенка: {age} лет
+{recommendations_text}
+Продолжим дальше...
+
+🔹 ВОПРОС 3️⃣ из 7️⃣
+
+Название детского сада (если ребенок его посещает)
+
+Примеры: "Радуга", "Солнышко", "нет" (если не посещает)
+
+→ Напишите название или "нет":'''
+
+def find_kindergartens_by_territory(territory: str) -> List[Tuple[int, Dict]]:
+    """
+    Поиск детских садов по территории
+    """
+    territory = territory.lower().strip()
+    
+    # Проверяем точное совпадение
+    if territory in TERRITORIES:
+        kgs = []
+        for kg_id in TERRITORIES[territory]:
+            if kg_id in KINDERGARTENS:
+                kgs.append((kg_id, KINDERGARTENS[kg_id]))
+        return kgs
+    
+    # Поиск по частичному совпадению (если в названии территории есть слово)
+    results = []
+    for kg_id, kg_info in KINDERGARTENS.items():
+        if territory in kg_info['location'].lower():
+            results.append((kg_id, kg_info))
+    
+    return results
+
+def get_kindergarten_info(kg_id) -> Optional[Dict]:
+    """Получить информацию о детском саде"""
+    try:
+        kg_id_float = float(kg_id) if '.' in str(kg_id) else int(kg_id)
+        return KINDERGARTENS.get(kg_id_float)
+    except:
+        return None
+
+def get_registration_step_3() -> str:
+    """
+    УЛУЧШЕННЫЙ третий вопрос с подбором детского сада
+    """
+    territories_text = ', '.join([
+        'Центр', 'Север', 'Юг', 'Восток', 'Запад',
+        'Северо-Запад', 'Северо-Восток', 'Юго-Запад', 'Юго-Восток'
+    ])
+    
+    return f'''✅ Хорошо! Далее...
+
+🔹 ВОПРОС 3️⃣ из 7️⃣
+
+Где расположен детский сад, который посещает ребенок?
+
+Мы подберем вам подходящий из наших учреждений! 🏫
+
+Напишите одно из:
+📌 Номер сада (например: 30, 44, 475)
+📌 Территорию проживания (например: Центр, Север, Юг)
+📌 Адрес или улицу (например: Зальцмана, Духова)
+📌 "Нет" - если не посещает ДОУ
+
+Доступные территории:
+{territories_text}
+
+→ Напишите номер сада, территорию или "нет":'''
+
+def get_available_kindergartens_list() -> str:
+    """Получить полный список доступных садов"""
+    text = '''🏫 ВСЕ ДЕТСКИЕ САДЫ ROBOSTEA MUL 🏫
+
+'''
+    for kg_id in sorted([k for k in KINDERGARTENS.keys() if isinstance(k, int) or k == int(k)]):
+        if kg_id in KINDERGARTENS:
+            kg = KINDERGARTENS[kg_id]
+            programs_list = ', '.join([PROGRAMS[p]['emoji'] for p in kg['programs'] if p in PROGRAMS])
+            text += f'''🏢 {kg['name']}
+   📍 Адрес: {kg['address']}
+   🗺️ Территория: {kg['location']}
+   📚 Программы: {programs_list}
+
+'''
+    return text
+
+def get_registration_step_4() -> str:
+    """Четвертый вопрос"""
+    return '''👍 Понятно!
+
+🔹 ВОПРОС 4️⃣ из 7️⃣
+
+Номер группы в детском саду
+
+Примеры: "первая младшая", "средняя", "1", "нет"
+
+→ Напишите номер группы или "нет":'''
+
+def get_registration_step_5() -> str:
+    """Пятый вопрос"""
+    return '''✨ Отлично! Информация о родителе...
+
+🔹 ВОПРОС 5️⃣ из 7️⃣
+
+Фамилия Имя Отчество родителя (опекуна)
+
+Примеры: Иванов Сергей Петрович, Смирнова Елена Алексеевна, Петров Иван
+
+→ Напишите ваше ФИО:'''
+
+def get_registration_step_6() -> str:
+    """Шестой вопрос"""
+    return '''📞 Спасибо! Осталось совсем немного...
+
+🔹 ВОПРОС 6️⃣ из 7️⃣
+
+Номер телефона для связи
+
+Примеры: +7 (921) 123-45-67, 89211234567, 8 (921) 123-45-67
+
+→ Напишите ваш номер телефона:'''
+
+def get_registration_step_7(age: int = 0) -> str:
+    """
+    Седьмой вопрос с УМНЫМИ рекомендациями на основе возраста
+    """
+    base_text = '''🎯 Финальный выбор!
+
+🔹 ВОПРОС 7️⃣ из 7️⃣
+
+Какая программа вас интересует?'''
+    
+    if age > 0:
+        recommended = get_recommended_programs(age)
+        if recommended:
+            base_text += f"\n\n💡 РЕКОМЕНДУЕМ для вашего ребенка (возраст {age} лет):\n"
+            for key, prog in recommended[:2]:
+                base_text += f"   ⭐ {key} - {prog['name']} ({prog['age']})\n"
+            base_text += "\n"
+    
+    base_text += '''
+Выберите один из кодов:
+
+🤖 robo_34 - Робототехника 3-4 года (300 руб)
+🧱 brick - РобоСТЕАМ Брик 5-6 лет (300 руб)
+⚙️ pro - РобоСТЕАМ Про 6-8 лет (400 руб)
+💃 dance - Хореография (350 руб)
+🗣️ logoped - Логопед и развитие речи (600 руб)
+📚 school_2 - Дошколёнок 4-5 лет (350 руб)
+✏️ school_1 - Дошколёнок 6-7 лет (375 руб)
+
+→ Напишите код программы (например: robo_34):'''
+    
+    return base_text
+
+def get_confirmation_message(data: Dict) -> str:
+    """Подтверждение данных перед отправкой"""
+    child_name = data.get('child_name', 'Не указано')
+    child_age = data.get('child_age', 'Не указано')
+    kindergarten = data.get('kindergarten', 'Не указано')
+    kindergarten_address = data.get('kindergarten_address', '')
+    group = data.get('group_number', 'Не указано')
+    parent_name = data.get('parent_name', 'Не указано')
+    parent_phone = data.get('parent_phone', 'Не указано')
+    program_name = data.get('program_name', 'Не выбрана')
+    program_price = data.get('program_price', 'Не указана')
+    
+    # Форматируем информацию о саде
+    if kindergarten_address:
+        kindergarten_info = f"{kindergarten}\n      {kindergarten_address}"
+    else:
+        kindergarten_info = kindergarten
+    
+    return f'''✅ ПРОВЕРЬТЕ ДАННЫЕ ПЕРЕД ОТПРАВКОЙ ✅
+
+📋 ИНФОРМАЦИЯ О РЕБЕНКЕ:
+   👶 Имя: {child_name}
+   📅 Возраст: {child_age} лет
+   🏫 Детский сад: {kindergarten_info}
+   👥 Группа: {group}
+
+👨‍👩‍👧 ИНФОРМАЦИЯ О РОДИТЕЛЕ:
+   👤 Имя: {parent_name}
+   📞 Телефон: {parent_phone}
+
+📚 ВЫБРАННАЯ ПРОГРАММА:
+   🎓 Программа: {program_name}
+   💰 Стоимость: {program_price}
+
+❓ Все верно?
+   "да" - да, отправить данные
+   "нет" - исправить данные
+   "отмена" - отменить регистрацию'''
+
+def get_registration_complete(data: Dict) -> str:
+    """Сообщение об успешной регистрации"""
+    child_name = data.get('child_name', 'Не указано')
+    program_name = data.get('program_name', 'Не выбрана')
+    
+    return f'''🎉 ПОЗДРАВЛЯЕМ! РЕГИСТРАЦИЯ ЗАВЕРШЕНА! 🎉
+
+Спасибо, {child_name}! Вы выбрали программу:
+⭐ {program_name}
+
+📞 Наш отдел заботы свяжется с вами в течение 24 часов!
+
+☎️ Если не хотите ждать, звоните:
+   📞 +7 (922) 014-44-94 - Наталья
+   📞 +7 (904) 805-25-61 - Ксения
+   📞 +7 (951) 239-86-49 - Жанна
+
+✨ СПЕЦПРЕДЛОЖЕНИЕ:
+   🎁 Первое занятие БЕСПЛАТНОЕ!
+   📅 Гибкое расписание
+   👥 Группы до 8 детей
+
+Спасибо за доверие! До скорых встреч! 👋'''
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ОСНОВНЫЕ ФУНКЦИИ ЛОГИКИ БОТА
+# ═══════════════════════════════════════════════════════════════════════════
+
+def save_registration(user_id: int, data: Dict) -> bool:
+    """Сохраняет данные регистрации"""
+    try:
+        registration = {
+            'user_id': user_id,
+            'child_name': data.get('child_name', ''),
+            'child_age': data.get('child_age', ''),
+            'kindergarten': data.get('kindergarten', ''),
+            'group_number': data.get('group_number', ''),
+            'parent_name': data.get('parent_name', ''),
+            'parent_phone': data.get('parent_phone', ''),
+            'program': data.get('program', ''),
+            'program_name': data.get('program_name', ''),
+            'program_price': data.get('program_price', ''),
+            'date': datetime.now().isoformat()
+        }
         
-        step_stats = {}
-        for user_steps in self.session_data.values():
-            for record in user_steps:
-                step = record['step']
-                if step not in step_stats:
-                    step_stats[step] = {'errors': 0, 'total': 0}
-                
-                step_stats[step]['total'] += 1
-                if not record['success']:
-                    step_stats[step]['errors'] += 1
+        # Сохранение в JSON файл
+        filename = f'/tmp/registration_{user_id}.json'
+        with open(filename, 'w', encoding='utf-8') as f:
+            json.dump(registration, f, ensure_ascii=False, indent=2)
         
-        if not step_stats:
-            return None
+        logger.info(f'✅ Регистрация сохранена для пользователя {user_id}')
+        return True
+    except Exception as e:
+        logger.error(f'❌ Ошибка сохранения регистрации: {str(e)}')
+        return False
+
+def send_message(user_id: int, text: str) -> bool:
+    """Отправляет сообщение пользователю через VK API"""
+    if not VK_TOKEN:
+        logger.error('❌ VK_TOKEN не установлен!')
+        return False
+    
+    url = 'https://api.vk.com/method/messages.send'
+    params = {
+        'access_token': VK_TOKEN,
+        'user_id': user_id,
+        'message': text,
+        'v': '5.199',
+        'random_id': 0
+    }
+    
+    try:
+        response = requests.post(url, data=params, timeout=10)
+        response_data = response.json()
         
-        # Найти шаг с максимальным процентом ошибок
-        hardest = max(
-            step_stats.items(),
-            key=lambda x: x[1]['errors'] / max(x[1]['total'], 1)
-        )
+        if 'error' in response_data:
+            logger.error(f'❌ Ошибка VK API: {response_data["error"]}')
+            return False
         
-        return hardest[0]
+        logger.info(f'✅ Сообщение отправлено пользователю {user_id}')
+        return True
+    except Exception as e:
+        logger.error(f'❌ Ошибка отправки сообщения: {str(e)}')
+        return False
+
+def send_admin_notification(user_id: int, phone: str, data: Dict) -> bool:
+    """Отправляет уведомление администратору о новом клиенте"""
+    if not VK_TOKEN:
+        logger.error('❌ VK_TOKEN не установлен!')
+        return False
+    
+    child_name = data.get('child_name', 'Не указано')
+    child_age = data.get('child_age', 'Не указано')
+    kindergarten = data.get('kindergarten', 'Не посещает')
+    kindergarten_address = data.get('kindergarten_address', '')
+    group = data.get('group_number', 'Не указано')
+    program_name = data.get('program_name', 'Не выбрана')
+    parent_name = data.get('parent_name', 'Не указано')
+    
+    # Форматируем информацию о саде
+    kg_info = f"{kindergarten}"
+    if kindergarten_address:
+        kg_info += f", {kindergarten_address}"
+    
+    text = f'''🔔 НОВЫЙ КЛИЕНТ 🔔
+
+👤 Пользователь VK: {user_id}
+
+📞 НОМЕР ТЕЛЕФОНА: {phone}
+
+👶 ФИО ребенка: {child_name}
+📅 Возраст ребенка: {child_age} лет
+🏫 Детский сад: {kg_info}
+👥 Группа: {group}
+👨 ФИО родителя: {parent_name}
+🎓 Интересует программу: {program_name}
+
+⚠️ ДЕЙСТВИЕ ТРЕБУЕТСЯ:
+→ Позвоните клиенту как можно скорее!
+→ Предложите пробное занятие
+→ Завершите регистрацию
+
+Время: {datetime.now().strftime("%d.%m.%Y %H:%M:%S")}'''
+    
+    url = 'https://api.vk.com/method/messages.send'
+    params = {
+        'access_token': VK_TOKEN,
+        'user_id': ADMIN_ID,
+        'message': text,
+        'v': '5.199',
+        'random_id': 0
+    }
+    
+    try:
+        response = requests.post(url, data=params, timeout=10)
+        response_data = response.json()
+        
+        if 'error' in response_data:
+            logger.error(f'❌ Ошибка отправки уведомления администратору: {response_data["error"]}')
+            return False
+        
+        logger.info(f'✅ Уведомление отправлено администратору (номер: {phone})')
+        return True
+    except Exception as e:
+        logger.error(f'❌ Ошибка отправки уведомления: {str(e)}')
+        return False
+
+def process_registration_step(user_id: int, step: int, message_text: str) -> Tuple[str, bool]:
+    """
+    УЛУЧШЕННАЯ версия обработки этапов регистрации
+    С расширенным анализом и рекомендациями
+    """
+    msg = message_text.lower().strip()
+    
+    # Проверка на отмену
+    if msg == 'отмена':
+        user_registration_data[user_id]['step'] = 0
+        return '❌ Регистрация отменена. Введите "запись" чтобы начать заново.', True
+    
+    if step == 1:  # ФИО ребенка
+        is_valid, result = validate_fio(message_text)
+        if not is_valid:
+            # Возвращаем ошибку с примерами
+            error_msg = f'''{result}
+
+💡 ПРИМЕРЫ ПРАВИЛЬНОГО ВВОДА:
+   • Иван Петрович
+   • Петров Иван Сергеевич
+   • Мария Ивановна
+   • Сидорова Елена Дмитриевна
+
+→ Попробуйте еще раз:'''
+            return error_msg, False
+        
+        user_registration_data[user_id]['child_name'] = message_text
+        user_registration_data[user_id]['step'] = 2
+        return get_registration_step_2(), True
+    
+    elif step == 2:  # Возраст - УЛУЧШЕНО
+        is_valid, result = validate_age(message_text)
+        if not is_valid:
+            return result, False
+        
+        age = int(result)
+        user_registration_data[user_id]['child_age'] = result
+        user_registration_data[user_id]['step'] = 3
+        
+        # НОВОЕ: Используем умную версию следующего шага с рекомендациями
+        child_name = user_registration_data[user_id].get('child_name', '')
+        return get_registration_step_2_with_recommendations(age, child_name), True
+    
+    elif step == 3:  # Детский сад - УЛУЧШЕНО
+        msg = message_text.lower().strip()
+        
+        # Если пользователь написал "нет"
+        if msg == 'нет' or msg == 'нет сада' or msg == 'не посещает':
+            user_registration_data[user_id]['kindergarten'] = 'Не посещает'
+            user_registration_data[user_id]['kindergarten_id'] = 'none'
+            user_registration_data[user_id]['step'] = 4
+            return get_registration_step_4(), True
+        
+        # Если пользователь запросил список
+        if msg == 'список' or msg == 'все сады' or msg == 'какие сады':
+            return get_available_kindergartens_list() + '\n\n→ Напишите номер сада, территорию или "нет":', False
+        
+        found_kgs = []
+        
+        # Сначала пытаемся найти по номеру
+        try:
+            kg_id_float = float(message_text) if '.' in message_text else int(message_text)
+            kg = get_kindergarten_info(kg_id_float)
+            if kg:
+                found_kgs = [(kg_id_float, kg)]
+        except:
+            pass
+        
+        # Если не найдено по номеру, ищем по территории
+        if not found_kgs:
+            found_kgs = find_kindergartens_by_territory(msg)
+        
+        # Если не найдено, пытаемся найти по адресу
+        if not found_kgs:
+            for kg_id, kg_info in KINDERGARTENS.items():
+                if msg in kg_info['address'].lower():
+                    found_kgs.append((kg_id, kg_info))
+        
+        # Если ничего не найдено
+        if not found_kgs:
+            response = f'''❌ Сад не найден: "{message_text}"
+
+Попробуйте одно из:
+📌 Номер сада (30, 44, 475)
+📌 Территорию (Центр, Север, Юг)
+📌 Адрес (Зальцмана, Духова)
+📌 "список" - показать все сады
+📌 "нет" - не посещает ДОУ
+
+→ Напишите еще раз:'''
+            return response, False
+        
+        # Если найден один сад
+        if len(found_kgs) == 1:
+            kg_id, kg_info = found_kgs[0]
+            user_registration_data[user_id]['kindergarten'] = kg_info['name']
+            user_registration_data[user_id]['kindergarten_address'] = kg_info['address']
+            user_registration_data[user_id]['kindergarten_id'] = str(kg_id)
+            user_registration_data[user_id]['step'] = 4
+            
+            # Показываем найденный сад
+            programs_emoji = ', '.join([PROGRAMS[p]['emoji'] for p in kg_info['programs'] if p in PROGRAMS])
+            response = f'''✅ Отлично! Нашли ваш сад:
+
+🏢 {kg_info['name']}
+📍 {kg_info['address']}
+🗺️ {kg_info['location']}
+📚 Наши программы: {programs_emoji}
+
+Продолжим...
+
+{get_registration_step_4()}'''
+            return response, True
+        
+        # Если найдено несколько садов
+        if len(found_kgs) <= 5:
+            response = f'''✅ Найдено {len(found_kgs)} садов в этой территории!
+
+Выберите ваш:
+'''
+            for kg_id, kg_info in found_kgs:
+                response += f'\n🏢 {kg_info["name"]} - {kg_info["address"]}\n   (Напишите номер {int(kg_id) if kg_id == int(kg_id) else kg_id})'
+            
+            response += '\n\n→ Напишите номер сада или территорию поточнее:'
+            return response, False
+        
+        # Слишком много результатов
+        response = f'''📍 Найдено {len(found_kgs)} садов! Уточните:
+- Номер сада (30, 44, 475)
+- Адрес
+- Территорию поточнее
+
+→ Напишите еще раз:'''
+        return response, False
+    
+    elif step == 4:  # Номер группы
+        user_registration_data[user_id]['group_number'] = message_text
+        user_registration_data[user_id]['step'] = 5
+        return get_registration_step_5(), True
+    
+    elif step == 5:  # ФИО родителя
+        is_valid, result = validate_fio(message_text)
+        if not is_valid:
+            error_msg = f'''{result}
+
+→ Попробуйте еще раз:'''
+            return error_msg, False
+        
+        user_registration_data[user_id]['parent_name'] = message_text
+        user_registration_data[user_id]['step'] = 6
+        return get_registration_step_6(), True
+    
+    elif step == 6:  # Телефон
+        is_valid, result = validate_phone(message_text)
+        if not is_valid:
+            return result, False
+        
+        user_registration_data[user_id]['parent_phone'] = result
+        user_registration_data[user_id]['step'] = 7
+        
+        # НОВОЕ: Используем умную версию с рекомендациями
+        age = int(user_registration_data[user_id].get('child_age', 0))
+        return get_registration_step_7(age), True
+    
+    elif step == 7:  # Программа
+        program = PROGRAMS.get(msg)
+        if not program:
+            return '''❌ Программа не найдена. Выберите из списка:
+
+🤖 robo_34 | 🧱 brick | ⚙️ pro | 💃 dance | 🗣️ logoped | 📚 school_2 | ✏️ school_1
+
+→ Напишите код программы:''', False
+        
+        user_registration_data[user_id]['program'] = msg
+        user_registration_data[user_id]['program_name'] = program['name']
+        user_registration_data[user_id]['program_price'] = program['price']
+        user_registration_data[user_id]['step'] = 8
+        
+        return get_confirmation_message(user_registration_data[user_id]), True
+    
+    return '❌ Неизвестный шаг регистрации', False
+
+def handle_user_message(user_id: int, message_text: str):
+    """
+    РАСШИРЕННЫЙ обработчик сообщений с улучшенным анализом
+    """
+    if not message_text:
+        return
+    
+    msg = message_text.lower().strip()
+    
+    # Инициализация пользователя
+    if user_id not in user_registration_data:
+        user_registration_data[user_id] = {'step': 0}
+    
+    current_step = user_registration_data[user_id].get('step', 0)
+    
+    logger.info(f'📨 Сообщение от {user_id} (шаг {current_step}): {msg[:50]}...')
+    
+    # ════════════════════════════════════════════════════════════════════════
+    # ОБРАБОТКА ТЕКУЩЕГО ШАГА РЕГИСТРАЦИИ (ПРИОРИТЕТ ВЫШЕ!)
+    # ════════════════════════════════════════════════════════════════════════
+    
+    if current_step == 1:
+        response, success = process_registration_step(user_id, 1, message_text)
+        send_message(user_id, response)
+        return
+    
+    elif current_step == 2:
+        response, success = process_registration_step(user_id, 2, message_text)
+        send_message(user_id, response)
+        return
+    
+    elif current_step == 3:
+        response, success = process_registration_step(user_id, 3, message_text)
+        send_message(user_id, response)
+        return
+    
+    elif current_step == 4:
+        response, success = process_registration_step(user_id, 4, message_text)
+        send_message(user_id, response)
+        return
+    
+    elif current_step == 5:
+        response, success = process_registration_step(user_id, 5, message_text)
+        send_message(user_id, response)
+        return
+    
+    elif current_step == 6:
+        response, success = process_registration_step(user_id, 6, message_text)
+        send_message(user_id, response)
+        return
+    
+    elif current_step == 7:
+        response, success = process_registration_step(user_id, 7, message_text)
+        send_message(user_id, response)
+        return
+    
+    elif current_step == 8:  # Подтверждение
+        if msg == 'да' or msg == 'да!' or msg == 'подтверждаю':
+            response = get_registration_complete(user_registration_data[user_id])
+            save_registration(user_id, user_registration_data[user_id])
+            user_registration_data[user_id]['step'] = 0
+            send_message(user_id, response)
+            return
+        elif msg == 'нет' or msg == 'исправить':
+            user_registration_data[user_id]['step'] = 1
+            send_message(user_id, 'Начнём сначала!\n\n' + get_registration_step_1())
+            return
+        elif msg == 'отмена':
+            user_registration_data[user_id]['step'] = 0
+            send_message(user_id, '❌ Регистрация отменена.')
+            return
+        else:
+            send_message(user_id, '❓ Пожалуйста, ответьте "да" или "нет"')
+            return
+    
+    # ════════════════════════════════════════════════════════════════════════
+    # ОБРАБОТКА КОМАНД И ЗАПРОСОВ (ЕСЛИ НЕ В ПРОЦЕССЕ РЕГИСТРАЦИИ)
+    # ════════════════════════════════════════════════════════════════════════
+    
+    if 'запись' in msg or 'регистрация' in msg:
+        user_registration_data[user_id]['step'] = 1
+        send_message(user_id, get_registration_step_1())
+        return
+    
+    elif msg in ['привет', 'привет!', 'здравствуйте', 'здравствуйте!', 'здравствуй', 'добрый день', 'добрый вечер', 'доброе утро']:
+        send_message(user_id, get_hello_response())
+        return
+    
+    elif msg == 'помощь' or msg == 'помощь!' or msg == '?':
+        send_message(user_id, get_help())
+        return
+    
+    elif 'программ' in msg or msg == 'программы':
+        send_message(user_id, get_all_programs())
+        return
+    
+    elif msg in ['robo_34', 'brick', 'pro', 'dance', 'logoped', 'school_2', 'school_1']:
+        details = get_program_details(msg)
+        if details:
+            send_message(user_id, details)
+        else:
+            send_message(user_id, '❌ Программа не найдена')
+        return
+    
+    elif 'контакт' in msg or msg == 'контакты':
+        send_message(user_id, get_contacts())
+        return
+    
+    elif 'спасибо' in msg:
+        send_message(user_id, '😊 Пожалуйста! Чем я еще могу помочь?')
+        return
+    
+    # Проверка на номер телефона (если пользователь просто пишет номер)
+    if re.search(r'\d{10,15}', message_text) and current_step == 0:
+        is_valid, result = validate_phone(message_text)
+        if is_valid:
+            # Сохраняем номер в данные пользователя
+            user_registration_data[user_id]['phone_only'] = result
+            
+            # Отправляем ответ пользователю
+            response_text = f'''✅ Спасибо! Номер телефона {result} получен!
+
+📞 Наш отдел заботы с вами свяжется в течение часа!
+
+🎓 Если у вас есть вопросы, напишите "программы" или "помощь"'''
+            
+            send_message(user_id, response_text)
+            
+            # Отправляем уведомление администратору
+            admin_data = {
+                'parent_name': 'Не указано',
+                'program_name': 'Интересуется общей информацией',
+                'child_name': 'Не указано',
+                'child_age': 'Не указано'
+            }
+            send_admin_notification(user_id, result, admin_data)
+            return
+    
+    # Если ничего не подошло
+    else:
+        send_message(user_id, f'''❓ Я не совсем понимаю: "{message_text}"
+
+Напишите:
+📋 "помощь" - справка по командам
+📚 "программы" - все наши курсы  
+✍️ "запись" - регистрация ребенка
+📞 "контакты" - как с нами связаться
+
+Или напишите свой вопрос - постараюсь помочь! 💬''')
+        return
+
+# ═══════════════════════════════════════════════════════════════════════════
+# FLASK ROUTES
+# ═══════════════════════════════════════════════════════════════════════════
+
+@app.route('/callback', methods=['POST'])
+def callback():
+    """Обработчик webhook'a от VK"""
+    data = request.get_json()
+    
+    if not data:
+        return 'ok', 200
+    
+    event_type = data.get('type')
+    
+    # Подтверждение webhook'a
+    if event_type == 'confirmation':
+        logger.info('✅ Событие подтверждения получено')
+        return VK_CONFIRMATION_TOKEN, 200
+    
+    # Подписка нового пользователя
+    if event_type == 'user_subscribed':
+        obj = data.get('object', {})
+        user_id = obj.get('user_id')
+        
+        if user_id:
+            logger.info(f'👤 Новый пользователь подписался: {user_id}')
+            send_message(user_id, get_main_menu())
+        
+        return 'ok', 200
+    
+    # Новое сообщение
+    if event_type == 'message_new':
+        obj = data.get('object', {})
+        message_obj = obj.get('message', {})
+        user_id = message_obj.get('from_id')
+        message_text = message_obj.get('text', '')
+        
+        if user_id and message_text:
+            logger.info(f'💬 Новое сообщение от {user_id}: {message_text[:50]}')
+            handle_user_message(user_id, message_text)
+        
+        return 'ok', 200
+    
+    return 'ok', 200
+
+@app.route('/', methods=['GET'])
+def index():
+    """Проверка здоровья сервера"""
+    return {'status': 'ok', 'version': '3.0', 'features': ['smart_age_detection', 'program_recommendations', 'context_analysis']}, 200
+
+@app.route('/health', methods=['GET'])
+def health():
+    """Эндпоинт здоровья"""
+    return {'status': 'healthy', 'timestamp': datetime.now().isoformat()}, 200
+
+@app.route('/stats', methods=['GET'])
+def stats():
+    """Статистика бота"""
+    return {
+        'status': 'ok',
+        'active_users': len(user_registration_data),
+        'timestamp': datetime.now().isoformat(),
+        'bot_version': '3.0',
+        'features_enabled': ['smart_age_detection', 'program_recommendations', 'context_aware_responses']
+    }, 200
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ЗАПУСК ПРИЛОЖЕНИЯ
+# ═══════════════════════════════════════════════════════════════════════════
+
+if __name__ == '__main__':
+    logger.info('🚀 Запуск бота РобоСТЕАМ v3.0 (Улучшенная версия)')
+    logger.info(f'📊 Версия Python: 3.6+')
+    logger.info(f'🔑 VK_TOKEN установлен: {"Да" if VK_TOKEN else "Нет"}')
+    logger.info(f'🔒 VK_SECRET установлен: {"Да" if VK_SECRET else "Нет"}')
+    logger.info(f'✨ Новые возможности: умное определение возраста, рекомендации программ, расширенное мышление')
+    
+    try:
+        app.run(host='0.0.0.0', port=5000, debug=False)
+    except Exception as e:
+        logger.error(f'❌ Ошибка запуска: {str(e)}')
