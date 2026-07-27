@@ -139,6 +139,149 @@ AGE_WORDS = {
     'десять': 10, 'десять лет': 10, 'десяти лет': 10,
 }
 
+# ═══════════════════════════════════════════════════════════════════════════
+# БАЗА ДЕТСКИХ САДОВ ROBOSTEA MUL
+# ═══════════════════════════════════════════════════════════════════════════
+
+KINDERGARTENS = {
+    30: {
+        'name': 'ДОУ №30',
+        'address': 'Зальцмана 24',
+        'location': 'Центр',
+        'programs': ['robo_34', 'brick', 'pro', 'logoped', 'dance', 'school_2', 'school_1']
+    },
+    30.1: {
+        'name': 'ДОУ №30СП',
+        'address': 'Зальцмана 38',
+        'location': 'Центр',
+        'programs': ['robo_34', 'brick', 'pro', 'logoped', 'dance', 'school_2', 'school_1']
+    },
+    44: {
+        'name': 'ДОУ №44',
+        'address': 'Конструктора Духова 25',
+        'location': 'Северо-Восток',
+        'programs': ['robo_34', 'brick', 'pro', 'dance']
+    },
+    44.1: {
+        'name': 'ДОУ №44СП',
+        'address': 'Конструктора Духова 9',
+        'location': 'Северо-Восток',
+        'programs': ['dance']
+    },
+    475: {
+        'name': 'ДОУ №475',
+        'address': 'Салютная 17а',
+        'location': 'Юг',
+        'programs': ['robo_34', 'brick', 'pro', 'dance']
+    },
+    475.1: {
+        'name': 'ДОУ №475',
+        'address': 'Горького 25а',
+        'location': 'Юго-Восток',
+        'programs': ['robo_34', 'brick', 'pro', 'dance']
+    },
+    416: {
+        'name': 'ДОУ №416',
+        'address': 'Культуры 59а',
+        'location': 'Восток',
+        'programs': ['robo_34', 'brick', 'pro']
+    },
+    413: {
+        'name': 'ДОУ №413',
+        'address': 'Доватора 18а',
+        'location': 'Запад',
+        'programs': ['robo_34', 'brick', 'pro', 'dance']
+    },
+    369: {
+        'name': 'ДОУ №369',
+        'address': 'Танкистов 152Б',
+        'location': 'Юго-Запад',
+        'programs': ['robo_34', 'brick', 'pro', 'school_2', 'school_1']
+    },
+    221: {
+        'name': 'ДОУ №221СП',
+        'address': 'Бажова 24а',
+        'location': 'Центр-Запад',
+        'programs': ['robo_34', 'brick', 'pro', 'dance']
+    },
+    418: {
+        'name': 'ДОУ №418',
+        'address': 'Шуменская 8',
+        'location': 'Север',
+        'programs': ['robo_34', 'brick', 'pro', 'dance']
+    },
+    262: {
+        'name': 'ДОУ №262',
+        'address': 'Шуменская 45',
+        'location': 'Север',
+        'programs': ['robo_34', 'brick', 'pro']
+    },
+    351: {
+        'name': 'ДОУ №351',
+        'address': 'Артиллерийская 61а',
+        'location': 'Северо-Запад',
+        'programs': ['robo_34', 'brick', 'pro']
+    },
+    421: {
+        'name': 'ДОУ №421',
+        'address': 'Руставели 4а',
+        'location': 'Центр-Восток',
+        'programs': ['robo_34', 'brick', 'pro', 'dance']
+    },
+    448: {
+        'name': 'ДОУ №448',
+        'address': 'Агалакова 50а',
+        'location': 'Запад',
+        'programs': ['robo_34', 'brick', 'pro']
+    },
+    448.1: {
+        'name': 'ДОУ №448СП',
+        'address': 'Гранитная 4',
+        'location': 'Запад',
+        'programs': ['robo_34', 'brick', 'pro', 'dance', 'school_2', 'school_1']
+    },
+    10: {
+        'name': 'ДОУ №10 (Копейск)',
+        'address': 'Международная 76а',
+        'location': 'Копейск',
+        'programs': ['robo_34', 'brick', 'pro']
+    },
+    48: {
+        'name': 'ДОУ №48',
+        'address': 'Маршала Чуйкова 25Б',
+        'location': 'Северо-Запад',
+        'programs': ['robo_34', 'brick', 'pro']
+    },
+    18: {
+        'name': 'ДОУ №18',
+        'address': 'Скульптура Головницкого 18',
+        'location': 'Центр',
+        'programs': ['robo_34', 'brick', 'pro']
+    },
+    18.1: {
+        'name': 'ДОУ №18СП',
+        'address': 'Бейвеля 38',
+        'location': 'Центр',
+        'programs': ['robo_34', 'brick', 'pro']
+    }
+}
+
+# Территории для быстрого поиска
+TERRITORIES = {
+    'центр': [30, 30.1, 221, 18, 18.1, 421],
+    'север': [418, 262],
+    'северо-запад': [351, 48],
+    'северо-восток': [44, 44.1],
+    'восток': [416],
+    'юго-восток': [475.1],
+    'юг': [475],
+    'юго-запад': [369],
+    'запад': [413, 448, 448.1],
+    'центр-запад': [221],
+    'центр-восток': [421],
+    'копейск': [10]
+}
+
 # Хранилище данных пользователей
 user_registration_data: Dict = {}
 
@@ -506,17 +649,80 @@ def get_registration_step_2_with_recommendations(age: int, child_name: str = "")
 
 → Напишите название или "нет":'''
 
+def find_kindergartens_by_territory(territory: str) -> List[Tuple[int, Dict]]:
+    """
+    Поиск детских садов по территории
+    """
+    territory = territory.lower().strip()
+    
+    # Проверяем точное совпадение
+    if territory in TERRITORIES:
+        kgs = []
+        for kg_id in TERRITORIES[territory]:
+            if kg_id in KINDERGARTENS:
+                kgs.append((kg_id, KINDERGARTENS[kg_id]))
+        return kgs
+    
+    # Поиск по частичному совпадению (если в названии территории есть слово)
+    results = []
+    for kg_id, kg_info in KINDERGARTENS.items():
+        if territory in kg_info['location'].lower():
+            results.append((kg_id, kg_info))
+    
+    return results
+
+def get_kindergarten_info(kg_id) -> Optional[Dict]:
+    """Получить информацию о детском саде"""
+    try:
+        kg_id_float = float(kg_id) if '.' in str(kg_id) else int(kg_id)
+        return KINDERGARTENS.get(kg_id_float)
+    except:
+        return None
+
 def get_registration_step_3() -> str:
-    """Третий вопрос"""
-    return '''✅ Хорошо! Далее...
+    """
+    УЛУЧШЕННЫЙ третий вопрос с подбором детского сада
+    """
+    territories_text = ', '.join([
+        'Центр', 'Север', 'Юг', 'Восток', 'Запад',
+        'Северо-Запад', 'Северо-Восток', 'Юго-Запад', 'Юго-Восток'
+    ])
+    
+    return f'''✅ Хорошо! Далее...
 
 🔹 ВОПРОС 3️⃣ из 7️⃣
 
-Название детского сада (если ребенок его посещает)
+Где расположен детский сад, который посещает ребенок?
 
-Примеры: "Радуга", "Солнышко", "нет" (если не посещает)
+Мы подберем вам подходящий из наших учреждений! 🏫
 
-→ Напишите название или "нет":'''
+Напишите одно из:
+📌 Номер сада (например: 30, 44, 475)
+📌 Территорию проживания (например: Центр, Север, Юг)
+📌 Адрес или улицу (например: Зальцмана, Духова)
+📌 "Нет" - если не посещает ДОУ
+
+Доступные территории:
+{territories_text}
+
+→ Напишите номер сада, территорию или "нет":'''
+
+def get_available_kindergartens_list() -> str:
+    """Получить полный список доступных садов"""
+    text = '''🏫 ВСЕ ДЕТСКИЕ САДЫ ROBOSTEA MUL 🏫
+
+'''
+    for kg_id in sorted([k for k in KINDERGARTENS.keys() if isinstance(k, int) or k == int(k)]):
+        if kg_id in KINDERGARTENS:
+            kg = KINDERGARTENS[kg_id]
+            programs_list = ', '.join([PROGRAMS[p]['emoji'] for p in kg['programs'] if p in PROGRAMS])
+            text += f'''🏢 {kg['name']}
+   📍 Адрес: {kg['address']}
+   🗺️ Территория: {kg['location']}
+   📚 Программы: {programs_list}
+
+'''
+    return text
 
 def get_registration_step_4() -> str:
     """Четвертый вопрос"""
@@ -592,18 +798,25 @@ def get_confirmation_message(data: Dict) -> str:
     child_name = data.get('child_name', 'Не указано')
     child_age = data.get('child_age', 'Не указано')
     kindergarten = data.get('kindergarten', 'Не указано')
+    kindergarten_address = data.get('kindergarten_address', '')
     group = data.get('group_number', 'Не указано')
     parent_name = data.get('parent_name', 'Не указано')
     parent_phone = data.get('parent_phone', 'Не указано')
     program_name = data.get('program_name', 'Не выбрана')
     program_price = data.get('program_price', 'Не указана')
     
+    # Форматируем информацию о саде
+    if kindergarten_address:
+        kindergarten_info = f"{kindergarten}\n      {kindergarten_address}"
+    else:
+        kindergarten_info = kindergarten
+    
     return f'''✅ ПРОВЕРЬТЕ ДАННЫЕ ПЕРЕД ОТПРАВКОЙ ✅
 
 📋 ИНФОРМАЦИЯ О РЕБЕНКЕ:
    👶 Имя: {child_name}
    📅 Возраст: {child_age} лет
-   🏫 Детский сад: {kindergarten}
+   🏫 Детский сад: {kindergarten_info}
    👥 Группа: {group}
 
 👨‍👩‍👧 ИНФОРМАЦИЯ О РОДИТЕЛЕ:
@@ -712,8 +925,16 @@ def send_admin_notification(user_id: int, phone: str, data: Dict) -> bool:
     
     child_name = data.get('child_name', 'Не указано')
     child_age = data.get('child_age', 'Не указано')
+    kindergarten = data.get('kindergarten', 'Не посещает')
+    kindergarten_address = data.get('kindergarten_address', '')
+    group = data.get('group_number', 'Не указано')
     program_name = data.get('program_name', 'Не выбрана')
     parent_name = data.get('parent_name', 'Не указано')
+    
+    # Форматируем информацию о саде
+    kg_info = f"{kindergarten}"
+    if kindergarten_address:
+        kg_info += f", {kindergarten_address}"
     
     text = f'''🔔 НОВЫЙ КЛИЕНТ 🔔
 
@@ -723,6 +944,8 @@ def send_admin_notification(user_id: int, phone: str, data: Dict) -> bool:
 
 👶 ФИО ребенка: {child_name}
 📅 Возраст ребенка: {child_age} лет
+🏫 Детский сад: {kg_info}
+👥 Группа: {group}
 👨 ФИО родителя: {parent_name}
 🎓 Интересует программу: {program_name}
 
@@ -800,10 +1023,97 @@ def process_registration_step(user_id: int, step: int, message_text: str) -> Tup
         child_name = user_registration_data[user_id].get('child_name', '')
         return get_registration_step_2_with_recommendations(age, child_name), True
     
-    elif step == 3:  # Детский сад
-        user_registration_data[user_id]['kindergarten'] = message_text
-        user_registration_data[user_id]['step'] = 4
-        return get_registration_step_4(), True
+    elif step == 3:  # Детский сад - УЛУЧШЕНО
+        msg = message_text.lower().strip()
+        
+        # Если пользователь написал "нет"
+        if msg == 'нет' or msg == 'нет сада' or msg == 'не посещает':
+            user_registration_data[user_id]['kindergarten'] = 'Не посещает'
+            user_registration_data[user_id]['kindergarten_id'] = 'none'
+            user_registration_data[user_id]['step'] = 4
+            return get_registration_step_4(), True
+        
+        # Если пользователь запросил список
+        if msg == 'список' or msg == 'все сады' or msg == 'какие сады':
+            return get_available_kindergartens_list() + '\n\n→ Напишите номер сада, территорию или "нет":', False
+        
+        found_kgs = []
+        
+        # Сначала пытаемся найти по номеру
+        try:
+            kg_id_float = float(message_text) if '.' in message_text else int(message_text)
+            kg = get_kindergarten_info(kg_id_float)
+            if kg:
+                found_kgs = [(kg_id_float, kg)]
+        except:
+            pass
+        
+        # Если не найдено по номеру, ищем по территории
+        if not found_kgs:
+            found_kgs = find_kindergartens_by_territory(msg)
+        
+        # Если не найдено, пытаемся найти по адресу
+        if not found_kgs:
+            for kg_id, kg_info in KINDERGARTENS.items():
+                if msg in kg_info['address'].lower():
+                    found_kgs.append((kg_id, kg_info))
+        
+        # Если ничего не найдено
+        if not found_kgs:
+            response = f'''❌ Сад не найден: "{message_text}"
+
+Попробуйте одно из:
+📌 Номер сада (30, 44, 475)
+📌 Территорию (Центр, Север, Юг)
+📌 Адрес (Зальцмана, Духова)
+📌 "список" - показать все сады
+📌 "нет" - не посещает ДОУ
+
+→ Напишите еще раз:'''
+            return response, False
+        
+        # Если найден один сад
+        if len(found_kgs) == 1:
+            kg_id, kg_info = found_kgs[0]
+            user_registration_data[user_id]['kindergarten'] = kg_info['name']
+            user_registration_data[user_id]['kindergarten_address'] = kg_info['address']
+            user_registration_data[user_id]['kindergarten_id'] = str(kg_id)
+            user_registration_data[user_id]['step'] = 4
+            
+            # Показываем найденный сад
+            programs_emoji = ', '.join([PROGRAMS[p]['emoji'] for p in kg_info['programs'] if p in PROGRAMS])
+            response = f'''✅ Отлично! Нашли ваш сад:
+
+🏢 {kg_info['name']}
+📍 {kg_info['address']}
+🗺️ {kg_info['location']}
+📚 Наши программы: {programs_emoji}
+
+Продолжим...
+
+{get_registration_step_4()}'''
+            return response, True
+        
+        # Если найдено несколько садов
+        if len(found_kgs) <= 5:
+            response = f'''✅ Найдено {len(found_kgs)} садов в этой территории!
+
+Выберите ваш:
+'''
+            for kg_id, kg_info in found_kgs:
+                response += f'\n🏢 {kg_info["name"]} - {kg_info["address"]}\n   (Напишите номер {int(kg_id) if kg_id == int(kg_id) else kg_id})'
+            
+            response += '\n\n→ Напишите номер сада или территорию поточнее:'
+            return response, False
+        
+        # Слишком много результатов
+        response = f'''📍 Найдено {len(found_kgs)} садов! Уточните:
+- Номер сада (30, 44, 475)
+- Адрес
+- Территорию поточнее
+
+→ Напишите еще раз:'''
+        return response, False
     
     elif step == 4:  # Номер группы
         user_registration_data[user_id]['group_number'] = message_text
