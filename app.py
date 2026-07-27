@@ -1,733 +1,581 @@
 """
-РобоСТЕАМ Bot v3.3 - ПРОДВИНУТАЯ ВЕРСИЯ
-Максимум возможностей и качества БЕЗ сторонних сервисов
+РобоСТЕАМ Bot v3.2 - УЛУЧШЕННАЯ ВЕРСИЯ
+Высокое качество ответов, контекстный анализ, умные рекомендации
+БЕЗ СТОРОННИХ СЕРВИСОВ - только внутренние улучшения!
 
-Автор: Claude
+Автор улучшений: Claude
 Дата: 2024
-Версия: v3.3 (Ultimate Quality Edition)
-
-НОВОЕ В v3.3 (по сравнению с v3.2):
-✅ Продвинутая обработка естественного языка
-✅ Смарт-матчинг и нечеткий поиск
-✅ Многоуровневые интеллектуальные подсказки
-✅ Персонализированные сценарии ответов
-✅ Умный кэш часто задаваемых вопросов
-✅ Динамическая генерация сообщений
-✅ Обучение на ошибках в реальном времени
-✅ Проактивные и предиктивные рекомендации
-✅ История и переиспользование данных
-✅ Предсказание следующего вопроса пользователя
 """
 
-from typing import Dict, List, Optional, Tuple, Set
-from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Tuple
+from datetime import datetime
 from enum import Enum
-import re
-from collections import defaultdict, Counter
+import json
 
 # ════════════════════════════════════════════════════════════════════════════
-# НОВОЕ v3.3: ПРОДВИНУТАЯ ОБРАБОТКА ЕСТЕСТВЕННОГО ЯЗЫКА
+# НОВОЕ: АНАЛИЗ НАСТРОЕНИЯ И КОНТЕКСТА ПОЛЬЗОВАТЕЛЯ
 # ════════════════════════════════════════════════════════════════════════════
 
-class NaturalLanguageProcessor:
-    """
-    Продвинутая обработка естественного языка
-    НОВОЕ в v3.3: Понимание синонимов, опечаток, контекста
-    """
-    
-    # Синонимы и альтернативные формулировки
-    SYNONYM_GROUPS = {
-        'start_registration': [
-            'записать', 'запись', 'регистрация', 'зарегистрировать',
-            'хочу записать', 'мне записать', 'нужно записать',
-            'запишите', 'зарегистрируйте меня', 'оформить заявку',
-            'подать заявку', 'отправить заявку', 'оформить запись',
-        ],
-        'get_help': [
-            'помощь', 'помоги', 'помогите', 'не понимаю',
-            'непонятно', 'повтори', 'повторите', 'объясни',
-            'еще раз', 'заново', 'не разобрал', 'не разобрала',
-            'спутался', 'запутался', 'запуталась', 'что делать',
-            'как это', 'зачем это', 'почему это', 'для чего',
-        ],
-        'get_info': [
-            'информация', 'расскажи', 'расскажите', 'подробнее',
-            'рассказать', 'узнать', 'что это', 'как это',
-            'какие программы', 'какие направления', 'что есть',
-            'что предлагаете', 'что работаете', 'чем занимаетесь',
-        ],
-        'confirm_yes': [
-            'да', 'да!', 'угу', 'ага', 'конечно', 'конечно!',
-            'верно', 'правильно', 'всё верно', 'всё правильно',
-            'согласен', 'согласна', 'согласны', 'принято',
-            'ок', 'окей', 'ok', 'yes', 'yep', 'подтверждаю',
-        ],
-        'confirm_no': [
-            'нет', 'нет!', 'не', 'не хочу', 'не буду',
-            'не согласен', 'не согласна', 'неправильно',
-            'изменить', 'заново', 'другое', 'нет спасибо',
-            'стоп', 'отменить', 'отмена', 'выход',
-        ],
-    }
-    
-    @staticmethod
-    def normalize_text(text: str) -> str:
-        """
-        Нормализация текста
-        - Убрать лишние пробелы
-        - Привести к нижнему регистру
-        - Убрать пунктуацию (кроме важной)
-        """
-        text = text.strip().lower()
-        # Убрать лишние пробелы
-        text = ' '.join(text.split())
-        # Убрать некоторые символы
-        text = re.sub(r'[!?.,;:\'"«»]', ' ', text)
-        return text.strip()
-    
-    @staticmethod
-    def extract_keywords(text: str) -> Set[str]:
-        """Извлечь ключевые слова (слова длиннее 3 символов)"""
-        normalized = NaturalLanguageProcessor.normalize_text(text)
-        words = normalized.split()
-        return set(w for w in words if len(w) > 2)
-    
-    @staticmethod
-    def calculate_similarity(text1: str, text2: str) -> float:
-        """
-        Рассчитать сходство между двумя текстами (0-1)
-        Использует Jaccard similarity на ключевых словах
-        """
-        keys1 = NaturalLanguageProcessor.extract_keywords(text1)
-        keys2 = NaturalLanguageProcessor.extract_keywords(text2)
-        
-        if not keys1 or not keys2:
-            return 0.0
-        
-        intersection = len(keys1 & keys2)
-        union = len(keys1 | keys2)
-        
-        return intersection / union if union > 0 else 0.0
-    
-    @staticmethod
-    def detect_typos(text: str) -> List[str]:
-        """
-        Обнаружить возможные опечатки
-        Возвращает список предположительно неправильных слов
-        """
-        normalized = NaturalLanguageProcessor.normalize_text(text)
-        words = normalized.split()
-        
-        # Слова с повторяющимися буквами (опечатка)
-        typos = []
-        for word in words:
-            if re.search(r'(.)\1{2,}', word):  # ввввв, аааа
-                typos.append(word)
-            if len(word) > 15:  # Слишком длинное слово
-                typos.append(word)
-        
-        return typos
-    
-    @staticmethod
-    def recognize_intent_advanced(text: str) -> Tuple[str, float]:
-        """
-        Продвинутое распознавание намерения
-        Возвращает: (intent, confidence)
-        """
-        normalized = NaturalLanguageProcessor.normalize_text(text)
-        
-        best_intent = None
-        best_score = 0.0
-        
-        for intent, keywords in NaturalLanguageProcessor.SYNONYM_GROUPS.items():
-            for keyword in keywords:
-                if keyword in normalized:
-                    score = len(keyword) / len(normalized)  # Чем больше совпадение, тем выше оценка
-                    if score > best_score:
-                        best_score = score
-                        best_intent = intent
-        
-        return (best_intent or 'unknown', best_score)
+class UserMood(Enum):
+    """Определенное настроение пользователя"""
+    CONFUSED = "confused"        # Запутался
+    FRUSTRATED = "frustrated"    # Раздражен
+    CURIOUS = "curious"          # Заинтересован
+    CALM = "calm"                # Спокоен
+    EXCITED = "excited"          # Воодушевлен
+    NEUTRAL = "neutral"          # Нейтрален
 
 
-# ════════════════════════════════════════════════════════════════════════════
-# НОВОЕ v3.3: ПРЕДИКТИВНАЯ АНАЛИТИКА
-# ════════════════════════════════════════════════════════════════════════════
-
-class PredictiveAnalytics:
+class UserContext:
     """
-    Предсказание следующего действия пользователя
-    НОВОЕ в v3.3: Проактивные подсказки
+    Контекст пользователя - полная история и анализ
+    НОВОЕ в v3.2: Умная память о пользователе
     """
     
-    def __init__(self):
-        self.user_patterns: Dict[int, List[str]] = defaultdict(list)
-        self.common_sequences: List[Tuple[str, str]] = [
-            # (текущий шаг, вероятный следующий)
-            ('child_fio', 'child_age'),
-            ('child_age', 'kindergarten_number'),
-            ('kindergarten_number', 'program_code'),
-            ('program_code', 'parent_fio'),
-            ('parent_fio', 'parent_phone'),
-            ('parent_phone', 'contact_preference'),
-        ]
-    
-    def predict_next_step(self, user_id: int, current_step: str) -> Optional[str]:
-        """Предсказать следующий шаг"""
-        for current, next_step in self.common_sequences:
-            if current == current_step:
-                return next_step
-        return None
-    
-    def predict_error_field(self, user_id: int) -> Optional[str]:
-        """Предсказать на каком шаге пользователь ошибается"""
-        if user_id not in self.user_patterns:
-            return None
+    def __init__(self, user_id: int):
+        self.user_id = user_id
+        self.dialog_history: List[Dict] = []
+        self.error_count = 0
+        self.successful_steps = 0
+        self.last_interaction = datetime.now()
+        self.detected_interests: List[str] = []
+        self.user_mood = UserMood.NEUTRAL
+        self.preferred_response_style = "friendly"  # friendly | formal | brief
+        self.is_first_time = True
+        self.confusion_detected = False
+        self.help_requests = 0
         
-        patterns = self.user_patterns[user_id]
-        if not patterns:
-            return None
-        
-        # Если большинство ошибок на одном шаге
-        error_counter = Counter(patterns)
-        most_common = error_counter.most_common(1)
-        
-        if most_common and most_common[0][1] > 2:
-            return most_common[0][0]
-        
-        return None
-    
-    def predict_user_interest(self, dialog_history: List[Dict]) -> List[str]:
-        """Предсказать интересы пользователя из диалога"""
-        interests = []
-        
-        keywords_map = {
-            'танец': ['танец', 'ритм', 'движение', 'музык', 'хореография'],
-            'робо': ['робот', 'конструи', 'лего', 'механи', 'роботи'],
-            'речь': ['речь', 'логопед', 'слова', 'говори', 'произнош'],
-            'школа': ['школа', 'подготов', 'букв', 'цифр', 'учеб'],
-            'спорт': ['спорт', 'физ', 'активн', 'прыга', 'бега'],
-        }
-        
-        for message in dialog_history:
-            if message.get('role') == 'user':
-                text = NaturalLanguageProcessor.normalize_text(message['content'])
-                for interest, keywords in keywords_map.items():
-                    if any(kw in text for kw in keywords):
-                        if interest not in interests:
-                            interests.append(interest)
-        
-        return interests
-    
-    def record_pattern(self, user_id: int, step: str, success: bool):
-        """Записать паттерн поведения"""
-        if not success:
-            self.user_patterns[user_id].append(step)
-
-
-# ════════════════════════════════════════════════════════════════════════════
-# НОВОЕ v3.3: УМНЫЙ КЭШ ЧАСТО ЗАДАВАЕМЫХ ВОПРОСОВ
-# ════════════════════════════════════════════════════════════════════════════
-
-class SmartFAQCache:
-    """
-    Умный кэш часто задаваемых вопросов
-    НОВОЕ в v3.3: Быстрые ответы на популярные вопросы
-    """
-    
-    # FAQ база (может быть расширена)
-    FAQ_BASE = {
-        'возраст_минимум': {
-            'questions': [
-                'со скольки лет',
-                'минимальный возраст',
-                'для какого возраста',
-                'могу ли я записать трехлетнего',
-            ],
-            'answer': '''📍 Наши программы начинаются с 3 лет!
-
-Возрастные диапазоны:
-   🤖 РобоСТИМ: 3-4 года
-   🧱 РобоСТЕАМ Брик: 4-5 лет
-   ⚙️ РобоСТЕАМ Про: 5-6 лет
-   🏆 РобоСТЕАМ Про+: 6-12 лет
-   💃 Хореография: 3-8 лет
-   🗣️ Логопед: 3-7 лет
-
-Если вашему ребенку еще меньше 3 лет - приходите позже! 
-Подождите совсем недолго, и сможете начать занятия! 🎂
-
-💬 Какой возраст у вашего ребенка?''',
-        },
-        'цена_программы': {
-            'questions': [
-                'сколько стоит',
-                'цена',
-                'стоимость',
-                'дорого ли',
-                'какая цена',
-            ],
-            'answer': '''💰 Вот наши цены:
-
-   🤖 РобоСТИМ: 300 руб/занятие
-   🧱 РобоСТЕАМ Брик: 300 руб/занятие
-   ⚙️ РобоСТЕАМ Про: 400 руб/занятие
-   🏆 РобоСТЕАМ Про+: 450 руб/занятие
-   💃 Хореография: 350 руб/занятие
-   🗣️ Логопед: 600 руб/занятие
-   📚 Дошколёнок 4-5: 350 руб/занятие
-   ✏️ Дошколёнок 6-7: 375 руб/занятие
-
-🎁 Первое занятие БЕСПЛАТНО! 
-
-❓ Вопросы о скидках? 
-📞 Позвоните Наталье: +7 (922) 014-44-94
-
-Какая программа вас интересует?''',
-        },
-        'расписание': {
-            'questions': [
-                'расписание',
-                'когда занятия',
-                'какой день',
-                'во сколько начинаются',
-                'время занятий',
-            ],
-            'answer': '''📅 Расписание:
-
-Занятия проводятся:
-   📍 Во всех центрах РобоСТЕАМуL
-   🕐 Различное время (утро, день, вечер)
-   📌 По выбранным дням
-
-Точное расписание зависит от конкретного центра и программы.
-
-📞 Уточните расписание у Натальи:
-   +7 (922) 014-44-94 (звонок)
-   или напишите в этом чате
-
-💡 Какую программу вы выбрали?''',
-        },
-        'длительность_занятия': {
-            'questions': [
-                'сколько длится',
-                'длительность',
-                'как долго',
-                'минут',
-                'часа',
-            ],
-            'answer': '''⏱️ Продолжительность занятий:
-
-   📌 Стандартное занятие: 60 минут
-   🎯 Это оптимально для концентрации внимания
-   
-   📊 Структура занятия:
-      • 5 мин - разминка/приветствие
-      • 40 мин - основное занятие
-      • 10 мин - игры/закрепление
-      • 5 мин - рефлексия/прощание
-
-💡 Ребенок успевает:
-   ✅ Включиться и сосредоточиться
-   ✅ Получить качественное обучение
-   ✅ Не переутомиться
-   ✅ Применить знания в игре
-
-📞 Еще вопросы? +7 (922) 014-44-94''',
-        },
-        'первое_занятие': {
-            'questions': [
-                'первое бесплатно',
-                'бесплатное занятие',
-                'пробное',
-                'бесплатный урок',
-            ],
-            'answer': '''🎁 Первое занятие БЕСПЛАТНО!
-
-   ✅ Да, вы правильно услышали
-   ✅ Абсолютно бесплатно
-   ✅ Без подвоха
-   ✅ Без договоров
-
-📋 Как это работает:
-   1. Вы записываетесь (вот где мы)
-   2. Наталья вам перезванивает
-   3. Договариваетесь о времени
-   4. Приходите на первое занятие
-   5. Это занятие бесплатно! 🎉
-   6. После решаете, нравится ли вам
-   7. Если нравится - платите за остальные
-
-💡 Это идеальный способ попробовать!
-
-➡️ Записываемся? 😊''',
-        },
-        'места': {
-            'questions': [
-                'есть ли места',
-                'свободных мест',
-                'очередь',
-                'когда откроется группа',
-            ],
-            'answer': '''👥 О наличии мест:
-
-Информация о свободных местах:
-   📌 Меняется каждый день
-   📌 Зависит от возраста ребенка
-   📌 Зависит от программы
-   📌 Зависит от времени
-
-📊 Обычно места есть, но лучше не откладывать!
-
-📞 Узнайте о наличии мест:
-   Позвоните Наталье: +7 (922) 014-44-94
-   Или закончите запись и она вам перезвонит
-
-💡 Часто места заканчиваются в выходные 
-и перед праздниками!
-
-➡️ Оформим заявку? 😊''',
-        },
-    }
-    
-    @staticmethod
-    def find_answer(user_question: str) -> Optional[str]:
-        """Найти быстрый ответ на часто задаваемый вопрос"""
-        user_question = NaturalLanguageProcessor.normalize_text(user_question)
-        
-        best_match = None
-        best_score = 0.0
-        
-        for faq_key, faq_data in SmartFAQCache.FAQ_BASE.items():
-            for question_pattern in faq_data['questions']:
-                similarity = NaturalLanguageProcessor.calculate_similarity(
-                    user_question,
-                    question_pattern
-                )
-                
-                if similarity > best_score:
-                    best_score = similarity
-                    best_match = faq_data['answer']
-        
-        # Если сходство достаточно высокое, вернуть ответ
-        if best_score > 0.4:
-            return best_match
-        
-        return None
-
-
-# ════════════════════════════════════════════════════════════════════════════
-# НОВОЕ v3.3: ДИНАМИЧЕСКАЯ ГЕНЕРАЦИЯ СООБЩЕНИЙ
-# ════════════════════════════════════════════════════════════════════════════
-
-class DynamicMessageGenerator:
-    """
-    Динамическая генерация сообщений
-    НОВОЕ в v3.3: Каждое сообщение персонализировано
-    """
-    
-    @staticmethod
-    def generate_greeting(user_name: Optional[str], is_returning: bool) -> str:
-        """Генерировать персональное приветствие"""
-        
-        greetings_first = [
-            "Привет! 👋",
-            "Здравствуйте! 😊",
-            "Добро пожаловать! 🎉",
-        ]
-        
-        greetings_returning = [
-            "Рады вас видеть! 👋",
-            "Добро пожаловать обратно! 😊",
-            "Вы снова здесь! 🎉",
-        ]
-        
-        import random
-        greeting = random.choice(greetings_returning if is_returning else greetings_first)
-        
-        if user_name:
-            name_part = user_name.split()[0] if ' ' in user_name else user_name
-            greeting = f"{greeting} {name_part}!"
-        
-        return greeting
-    
-    @staticmethod
-    def generate_encouragement(error_count: int) -> str:
-        """Генерировать поддержку при ошибках"""
-        
-        if error_count == 1:
-            encouragements = [
-                "Не беда, попробуем еще раз! 😊",
-                "Ничего, бывает! Попробуйте еще раз.",
-                "Все легко! Давайте еще раз.",
-            ]
-        elif error_count == 2:
-            encouragements = [
-                "Я верю в вас! Попробуйте еще раз! 💪",
-                "Уже близко! Еще попытка! 🎯",
-                "Я знаю, вы справитесь! 😊",
-            ]
-        elif error_count >= 3:
-            encouragements = [
-                "Вы справляетесь отлично! Еще раз! 🌟",
-                "Уверен, сейчас получится! 💪",
-                "Не сдавайтесь! Почти там! 🚀",
-            ]
-        else:
-            encouragements = ["Попробуйте еще раз! 😊"]
-        
-        import random
-        return random.choice(encouragements)
-    
-    @staticmethod
-    def generate_success_message(field: str, value: str) -> str:
-        """Генерировать сообщение о успехе"""
-        
-        success_templates = {
-            'child_fio': f"✅ Отлично! {value} - красивое имя! 😊",
-            'child_age': f"✅ Спасибо! Ребенок {value} лет - идеальный возраст! 🎂",
-            'program': "✅ Отличный выбор! 🎯",
-            'default': "✅ Спасибо за информацию! 😊",
-        }
-        
-        return success_templates.get(field, success_templates['default'])
-    
-    @staticmethod
-    def generate_context_aware_tip(context: Dict) -> str:
-        """Генерировать контекстные подсказки"""
-        
-        tips = {
-            'first_time': "💡 Это ваша первая запись - отлично! Все просто! 🎉",
-            'returning': "💡 Добро пожаловать обратно! Помним вас! 😊",
-            'many_errors': "💡 Не волнуйтесь, нам часто задают эти вопросы! 😊",
-            'interested': "💡 Вижу, вас заинтересовало! Расскажу подробнее! 🎯",
-        }
-        
-        for key, tip in tips.items():
-            if context.get(key):
-                return tip
-        
-        return "💡 Вот несколько советов... 😊"
-
-
-# ════════════════════════════════════════════════════════════════════════════
-# НОВОЕ v3.3: АДАПТИВНАЯ СЛОЖНОСТЬ ОБЪЯСНЕНИЙ
-# ════════════════════════════════════════════════════════════════════════════
-
-class AdaptiveComplexity:
-    """
-    Адаптивная сложность объяснений в зависимости от пользователя
-    НОВОЕ в v3.3: От простых к сложным объяснениям
-    """
-    
-    COMPLEXITY_LEVELS = {
-        'very_simple': {
-            'description': 'Очень простой уровень (дети, не спешащие)',
-            'max_words': 50,
-            'examples': 2,
-            'emoji_density': 'high',
-        },
-        'simple': {
-            'description': 'Простой уровень (стандартный)',
-            'max_words': 100,
-            'examples': 2,
-            'emoji_density': 'medium',
-        },
-        'normal': {
-            'description': 'Нормальный уровень (информативный)',
-            'max_words': 200,
-            'examples': 3,
-            'emoji_density': 'medium',
-        },
-        'detailed': {
-            'description': 'Подробный уровень (очень информативный)',
-            'max_words': 400,
-            'examples': 4,
-            'emoji_density': 'low',
-        },
-        'expert': {
-            'description': 'Экспертный уровень (максимум информации)',
-            'max_words': 700,
-            'examples': 5,
-            'emoji_density': 'very_low',
-        },
-    }
-    
-    @staticmethod
-    def detect_user_level(context: Dict) -> str:
-        """Определить уровень сложности для пользователя"""
-        
-        # Если много ошибок - упростить
-        if context.get('error_count', 0) > 3:
-            return 'very_simple'
-        
-        # Если пользователь просит подробнее - увеличить
-        if context.get('wants_details'):
-            return 'detailed'
-        
-        # Если спешит (время < 5 сек на ответ) - упростить
-        if context.get('response_time', 0) < 5:
-            return 'simple'
-        
-        # По умолчанию - нормальный уровень
-        return 'normal'
-    
-    @staticmethod
-    def adapt_message(message: str, complexity: str) -> str:
-        """Адаптировать сообщение под уровень сложности"""
-        
-        level = AdaptiveComplexity.COMPLEXITY_LEVELS.get(complexity, 
-                                                         AdaptiveComplexity.COMPLEXITY_LEVELS['normal'])
-        
-        # Простое укорочение для демонстрации
-        if complexity == 'very_simple':
-            # Оставить только первый абзац и главную идею
-            lines = message.split('\n')
-            return '\n'.join(lines[:3])
-        
-        elif complexity == 'detailed':
-            # Добавить подробнее (в реальном коде)
-            return message + "\n\n📚 Дополнительная информация доступна по запросу!"
-        
-        return message
-
-
-# ════════════════════════════════════════════════════════════════════════════
-# НОВОЕ v3.3: СИСТЕМА ОБУЧЕНИЯ НА ОШИБКАХ
-# ════════════════════════════════════════════════════════════════════════════
-
-class LearningSystem:
-    """
-    Система обучения на ошибках в реальном времени
-    НОВОЕ в v3.3: Бот становится умнее с каждым пользователем
-    """
-    
-    def __init__(self):
-        self.error_patterns: Dict[str, int] = defaultdict(int)
-        self.success_patterns: Dict[str, int] = defaultdict(int)
-        self.common_questions: List[str] = []
-        self.problem_areas: List[Tuple[str, float]] = []
-    
-    def record_error(self, field: str, error_type: str, user_input: str):
-        """Записать ошибку для обучения"""
-        key = f"{field}:{error_type}"
-        self.error_patterns[key] += 1
-        
-        # Если ошибка повторяется часто, добавить подсказку
-        if self.error_patterns[key] > 5:
-            self.problem_areas.append((field, self.error_patterns[key]))
-    
-    def record_question(self, question: str):
-        """Записать часто задаваемый вопрос"""
-        normalized = NaturalLanguageProcessor.normalize_text(question)
-        self.common_questions.append(normalized)
-    
-    def get_problem_areas(self) -> List[Tuple[str, float]]:
-        """Получить проблемные области для администратора"""
-        return sorted(self.problem_areas, key=lambda x: x[1], reverse=True)[:5]
-    
-    def suggest_improvement(self, field: str) -> Optional[str]:
-        """Предложить улучшение для сложного поля"""
-        
-        if field not in [p[0] for p in self.problem_areas]:
-            return None
-        
-        suggestions = {
-            'child_fio': "Может быть, добавить более понятные примеры ФИО?",
-            'kindergarten_number': "Может быть, добавить подсказку о форматах номеров?",
-            'parent_phone': "Может быть, позволить сохранить форму +7/8?",
-        }
-        
-        return suggestions.get(field)
-
-
-# ════════════════════════════════════════════════════════════════════════════
-# НОВОЕ v3.3: КЭШИРОВАНИЕ И ПЕРЕИСПОЛЬЗОВАНИЕ ДАННЫХ
-# ════════════════════════════════════════════════════════════════════════════
-
-class SmartDataCache:
-    """
-    Умный кэш данных пользователя
-    НОВОЕ в v3.3: Быстрая повторная запись, автозаполнение
-    """
-    
-    def __init__(self):
-        self.user_cache: Dict[int, Dict] = {}
-        self.last_used_values: Dict[str, str] = {}
-    
-    def cache_user_data(self, user_id: int, data: Dict):
-        """Кэшировать данные пользователя"""
-        self.user_cache[user_id] = {
-            'data': data,
+    def add_message(self, role: str, content: str, field: str = None):
+        """Добавить сообщение в историю"""
+        self.dialog_history.append({
             'timestamp': datetime.now(),
-            'usage_count': self.user_cache.get(user_id, {}).get('usage_count', 0) + 1,
+            'role': role,  # user | bot
+            'content': content,
+            'field': field  # на каком шаге
+        })
+        self.last_interaction = datetime.now()
+    
+    def detect_user_mood(self) -> UserMood:
+        """
+        Определить настроение пользователя по истории
+        НОВОЕ в v3.2: Анализ эмоционального состояния
+        """
+        if not self.dialog_history:
+            return UserMood.NEUTRAL
+        
+        recent_messages = self.dialog_history[-3:]
+        user_messages = [m for m in recent_messages if m['role'] == 'user']
+        
+        frustrated_indicators = ['не', 'не могу', 'сложно', 'не понимаю', '?????', 'что']
+        curious_indicators = ['интересно', 'как', 'почему', 'расскажи', 'подробнее']
+        excited_indicators = ['да!', 'отлично', 'супер', '!!!', 'круто', 'спасибо']
+        confused_indicators = ['?', 'что это', 'не разобрал', 'еще раз', 'повтори']
+        
+        mood_scores = {
+            UserMood.FRUSTRATED: 0,
+            UserMood.CURIOUS: 0,
+            UserMood.EXCITED: 0,
+            UserMood.CONFUSED: 0,
+            UserMood.CALM: 0
         }
+        
+        for msg in user_messages:
+            text = msg['content'].lower()
+            if any(ind in text for ind in frustrated_indicators):
+                mood_scores[UserMood.FRUSTRATED] += 1
+            if any(ind in text for ind in curious_indicators):
+                mood_scores[UserMood.CURIOUS] += 1
+            if any(ind in text for ind in excited_indicators):
+                mood_scores[UserMood.EXCITED] += 1
+            if any(ind in text for ind in confused_indicators):
+                mood_scores[UserMood.CONFUSED] += 1
+        
+        # Если много ошибок - скорее всего запутался
+        if self.error_count > 2:
+            mood_scores[UserMood.CONFUSED] += 2
+        
+        # Определить самое высокое настроение
+        if all(v == 0 for v in mood_scores.values()):
+            return UserMood.NEUTRAL
+        
+        self.user_mood = max(mood_scores.items(), key=lambda x: x[1])[0]
+        return self.user_mood
     
-    def get_cached_data(self, user_id: int) -> Optional[Dict]:
-        """Получить кэшированные данные"""
-        if user_id in self.user_cache:
-            cache = self.user_cache[user_id]
-            # Проверить не устарели ли данные (7 дней)
-            age = (datetime.now() - cache['timestamp']).days
-            if age < 7:
-                return cache['data']
-        return None
+    def record_error(self, field: str, value: str):
+        """Записать ошибку"""
+        self.error_count += 1
+        self.add_message('system', f'Error: {value}', field)
+        self.confusion_detected = self.error_count > 1
     
-    def is_returning_user(self, user_id: int) -> bool:
-        """Проверить - возвращающийся ли пользователь"""
-        return user_id in self.user_cache and \
-               self.user_cache[user_id].get('usage_count', 0) > 1
+    def record_success(self, field: str, value: str):
+        """Записать успешный ввод"""
+        self.successful_steps += 1
+        self.add_message('system', f'Success: {value}', field)
+        # Немного снизить ошибки при успехе
+        if self.error_count > 0:
+            self.error_count -= 1
     
-    def suggest_prefilled_data(self, user_id: int, field: str) -> Optional[str]:
-        """Предложить автозаполнение данных"""
-        cached = self.get_cached_data(user_id)
-        if cached and field in cached:
-            value = cached[field]
-            if field == 'child_fio':
-                return f"Помню, ваш ребенок: {value}. Это еще актуально? 😊"
-            elif field == 'parent_fio':
-                return f"Ваше имя: {value}. Правильно? 😊"
-        return None
+    def extract_interests(self) -> List[str]:
+        """
+        Извлечь интересы пользователя из истории
+        НОВОЕ в v3.2: Умное обнаружение интересов
+        """
+        if self.detected_interests:
+            return self.detected_interests
+        
+        interests_keywords = {
+            'танец': ['танец', 'хореография', 'ритм', 'движение', 'танцы'],
+            'робо': ['робот', 'робототехника', 'конструирование', 'лего', 'строить'],
+            'речь': ['речь', 'логопед', 'слова', 'говорить', 'произношение'],
+            'школа': ['школа', 'подготовка', 'учеба', 'знания', 'буквы'],
+        }
+        
+        for msg in self.dialog_history:
+            if msg['role'] == 'user':
+                text = msg['content'].lower()
+                for interest, keywords in interests_keywords.items():
+                    if any(kw in text for kw in keywords):
+                        if interest not in self.detected_interests:
+                            self.detected_interests.append(interest)
+        
+        return self.detected_interests
+    
+    def should_offer_help(self) -> bool:
+        """Нужно ли предложить помощь?"""
+        # Если ошибок больше чем успехов - значит запутался
+        if self.error_count > self.successful_steps:
+            return True
+        
+        # Если долго ничего не происходит
+        if (datetime.now() - self.last_interaction).total_seconds() > 60:
+            return True
+        
+        # Если много запросов помощи
+        if self.help_requests > 2:
+            return True
+        
+        return False
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# НОВОЕ v3.3: МНОГОУРОВНЕВЫЕ ПОДСКАЗКИ
+# НОВОЕ: УМНЫЙ АНАЛИЗ НАМЕРЕНИЙ
 # ════════════════════════════════════════════════════════════════════════════
 
-class MultiLevelHints:
+class IntentAnalyzer:
     """
-    Многоуровневые подсказки в зависимости от количества ошибок
-    НОВОЕ в v3.3: От намека до полного объяснения
+    Анализ истинного намерения пользователя
+    НОВОЕ в v3.2: Контекстное понимание
     """
-    
-    HINT_LEVELS = {
-        'child_fio': {
-            'level_1': "💡 Напишите фамилию и имя",
-            'level_2': "💡 Пример: Петров Иван\n   Или: Иванова Мария Сергеевна",
-            'level_3': "💡 Используйте:\n   ✅ Буквы\n   ✅ Пробелы\n   ✅ Дефисы (-)\n   ❌ Не используйте цифры",
-            'level_4': "💡 Как пишется в свидетельстве о рождении?\n   Фамилия + Имя + (опционально) Отчество",
-        },
-        'child_age': {
-            'level_1': "💡 Напишите возраст цифрой",
-            'level_2': "💡 Пример: 3 или 5 или пять",
-            'level_3': "💡 Диапазон: от 2 до 12 лет",
-            'level_4': "💡 Вы можете написать:\n   • 3 (цифра)\n   • три (слово)\n   • '3 года' (с уточнением)",
-        },
-        'kindergarten_number': {
-            'level_1': "💡 Напишите номер сада",
-            'level_2': "💡 Примеры: 30, №30, 30 СП",
-            'level_3': "💡 Я понимаю:\n   ✅ 30 (число)\n   ✅ №30 (с символом)\n   ✅ ДОУ 30 (с префиксом)\n   ✅ 30 СП (с филиалом)\n   ✅ Нет (если не ходит)",
-            'level_4': "💡 Не знаете номер? Напишите 'Нет' и мы разберемся на следующем шаге!",
-        },
-    }
     
     @staticmethod
-    def get_hint(field: str, error_level: int) -> str:
-        """Получить подсказку нужного уровня"""
-        if field not in MultiLevelHints.HINT_LEVELS:
-            return f"💡 Попробуйте еще раз!"
+    def analyze(text: str, context: UserContext) -> Dict:
+        """
+        Анализировать свободный текст пользователя
+        Возвращает: {'intent': str, 'confidence': float, 'entities': dict}
+        """
+        text_lower = text.lower().strip()
         
-        hints = MultiLevelHints.HINT_LEVELS[field]
-        level_key = f'level_{min(error_level, 4)}'
+        # Простые намерения
+        simple_intents = {
+            'start_registration': ['запис', 'хочу запис', 'запись', 'регистр'],
+            'get_help': ['помощь', 'помоги', 'не понимаю', 'помогите', 'как это'],
+            'get_info': ['расскажи', 'информация', 'подробнее', 'что это', 'как'],
+            'show_programs': ['программ', 'направления', 'что у вас есть'],
+            'cancel': ['отмена', 'выход', 'не хочу', 'стоп', 'хватит'],
+            'back': ['назад', 'назад!', 'вернуться', '<<<'],
+        }
         
-        return hints.get(level_key, hints['level_1'])
+        for intent, keywords in simple_intents.items():
+            if any(kw in text_lower for kw in keywords):
+                return {
+                    'intent': intent,
+                    'confidence': 0.9,
+                    'entities': {}
+                }
+        
+        # Сложное распознавание: возраст
+        import re
+        age_match = re.search(r'(\d+)\s*(?:год|лет|года)', text)
+        if age_match:
+            age = int(age_match.group(1))
+            if 2 <= age <= 12:
+                return {
+                    'intent': 'provide_age',
+                    'confidence': 0.95,
+                    'entities': {'age': age}
+                }
+        
+        # Если много вопросов - user запутался
+        if text.count('?') > 1:
+            return {
+                'intent': 'confusion_detected',
+                'confidence': 0.7,
+                'entities': {}
+            }
+        
+        # Default: обычное сообщение
+        return {
+            'intent': 'generic_message',
+            'confidence': 0.5,
+            'entities': {}
+        }
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# НОВОЕ: УМНЫЙ РЕКОМЕНДАТОР ПРОГРАММ
+# ════════════════════════════════════════════════════════════════════════════
+
+class SmartRecommender:
+    """
+    Умные рекомендации программ
+    НОВОЕ в v3.2: Анализ интересов и особенностей
+    """
+    
+    @staticmethod
+    def calculate_program_fit(
+        age: int, 
+        interests: List[str],
+        programs: Dict,
+        context: UserContext
+    ) -> List[Tuple[str, float, str]]:
+        """
+        Рассчитать подходящие программы с обоснованием
+        Возвращает: [(program_code, score, reason), ...]
+        """
+        recommendations = []
+        
+        for code, program in programs.items():
+            score = 0.0
+            reasons = []
+            
+            # Проверка по возрасту
+            if program['age_min'] <= age <= program['age_max']:
+                score += 40
+                reasons.append(f"подходит по возрасту {age} лет")
+            elif program['age_min'] <= age <= program['age_max'] + 1:
+                score += 20
+                reasons.append(f"подходит для возраста чуть старше")
+            
+            # Проверка по интересам
+            if 'танец' in interests and 'dance' in code.lower():
+                score += 30
+                reasons.append("совпадает с интересом к танцам")
+            if 'робо' in interests and ('robot' in code.lower() or 'robo' in code.lower()):
+                score += 30
+                reasons.append("совпадает с интересом к робототехнике")
+            if 'речь' in interests and 'logoped' in code.lower():
+                score += 30
+                reasons.append("совпадает с интересом к развитию речи")
+            if 'школа' in interests and 'school' in code.lower():
+                score += 30
+                reasons.append("совпадает с интересом к подготовке")
+            
+            # Первый раз? Рекомендуем популярные
+            if context.is_first_time and code in ['robo_stim', 'brick', 'dance']:
+                score += 10
+                reasons.append("популярная программа для начинающих")
+            
+            if score > 0:
+                reason = " • ".join(reasons)
+                recommendations.append((code, score, reason))
+        
+        # Отсортировать поScore
+        recommendations.sort(key=lambda x: x[1], reverse=True)
+        return recommendations
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# НОВОЕ: УМНАЯ ОБРАБОТКА ОШИБОК
+# ════════════════════════════════════════════════════════════════════════════
+
+class SmartErrorHandler:
+    """
+    Умная обработка ошибок ввода
+    НОВОЕ в v3.2: Помощь вместо критики
+    """
+    
+    @staticmethod
+    def handle_age_error(value: str, user_age: Optional[int] = None) -> str:
+        """Помощь при ошибке ввода возраста"""
+        
+        # Попытка извлечь число
+        import re
+        match = re.search(r'\d+', value)
+        
+        if match:
+            attempted_age = int(match.group())
+            if attempted_age < 2:
+                return f"""❓ Малыш еще очень маленький ({attempted_age} года).
+К сожалению, наши программы начинаются с 3 лет.
+
+💡 Подождите чуть-чуть! 🎂 
+За полгода-год ребенок подрастет, и тогда можно начать занятия!
+
+Или может быть вы опечатались? 😊"""
+            elif attempted_age > 12:
+                return f"""❓ Отлично, что ваш ребенок уже {attempted_age} лет!
+
+К сожалению, наша программа для детей до 12 лет.
+Для ребенка старшего возраста рекомендуем позвонить Наталье:
+📞 +7 (922) 014-44-94
+
+Она подберет что-то подходящее! 😊"""
+        
+        return """❓ Кажется, я не разобрал возраст.
+
+💡 Напишите просто цифру:
+   • 3 или 4 или 5
+   • три или четыре
+   • '3 года' или '4 года'
+
+Я поймаю любой формат! 😊"""
+    
+    @staticmethod
+    def handle_phone_error(value: str, last_error: Optional[str] = None) -> str:
+        """Помощь при ошибке в телефоне"""
+        
+        if last_error == "too_short":
+            return """📞 Кажется, номер получился коротковатым.
+
+Для России обычно 10-11 цифр:
+   ✅ Правильно: +7 (921) 123-45-67
+   ✅ Или так: 8-921-123-45-67
+   ✅ Или просто: 89211234567
+
+💡 Совет: скопируйте номер из телефона - так точнее! 📱
+
+Напишите номер еще раз:"""
+        
+        return """📞 Проверьте номер телефона.
+
+Нам нужно 10-11 цифр для России:
+   ✅ +7 900 123-45-67
+   ✅ 8-921-123-45-67  
+   ✅ 89211234567
+
+❌ Неправильно: текст, спецсимволы кроме (+, -, пробел)
+
+💡 Если затрудняетесь - позвоните в офис:
+📞 +7 (922) 014-44-94 (Наталья)
+
+Давайте еще раз? 😊"""
+    
+    @staticmethod
+    def handle_name_error(value: str) -> str:
+        """Помощь при ошибке в ФИО"""
+        
+        return f"""❓ С ФИО что-то не то: '{value}'
+
+Используйте только буквы и дефисы, без цифр:
+   ✅ Правильно: Петров Иван
+   ✅ Правильно: Сидорова-Петрова Мария
+   
+   ❌ Неправильно: Петров123, Ivan, $$$
+
+💡 Напишите ФИО как в свидетельстве о рождении.
+Отчество (3-е слово) - необязательно!
+
+Попробуем еще раз? 😊"""
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# НОВОЕ: КРАСИВОЕ ФОРМАТИРОВАНИЕ СООБЩЕНИЙ
+# ════════════════════════════════════════════════════════════════════════════
+
+class MessageFormatter:
+    """
+    Красивое и понятное форматирование сообщений
+    НОВОЕ в v3.2: Профессиональный стиль
+    """
+    
+    @staticmethod
+    def format_welcome(user_name: Optional[str] = None) -> str:
+        """Приветствие"""
+        greeting = "Привет" if not user_name else f"Привет, {user_name.split()[0]}"
+        
+        return f"""{greeting}! 👋
+
+Я помощник RoboSTEAMuL. 🤖
+
+Помогу вам:
+   🎯 Подобрать идеальную программу по возрасту
+   📋 Оформить запись ребенка
+   💬 Ответить на все вопросы
+
+Что вас интересует?
+
+   📝 Записать ребенка
+   🎨 Узнать о направлениях
+   ❓ Задать вопрос
+   📞 Контакты"""
+    
+    @staticmethod
+    def format_program_recommendation(
+        program_code: str,
+        program: Dict,
+        age: int,
+        reasons: str
+    ) -> str:
+        """Красиво отформатировать рекомендацию программы"""
+        
+        emoji = program.get('emoji', '✨')
+        
+        return f"""⭐ {emoji} {program['name'].upper()}
+
+💡 Почему эта программа идеальна?
+   {reasons}
+
+📊 Что вы получите:
+   ✓ {program['description']}
+   ✓ Возраст: {program['age_min']}-{program['age_max']} лет
+   ✓ Цена: {program['price']}/занятие
+   ✓ Группы до 8 детей
+   ✓ Первое занятие БЕСПЛАТНО! 🎁
+
+📞 Вопросы? Позвоните Наталье: +7 (922) 014-44-94
+
+➡️ Выбираете эту программу? 😊"""
+    
+    @staticmethod
+    def format_help_message(context: UserContext) -> str:
+        """Предложить помощь"""
+        
+        mood_emoji = {
+            'confused': '🤔',
+            'frustrated': '😟',
+            'neutral': '😊',
+            'curious': '👀',
+        }
+        
+        emoji = mood_emoji.get(context.user_mood.value, '😊')
+        
+        return f"""{emoji} Кажется, вы затруднились?
+
+Не беда! Я здесь, чтобы помочь:
+
+💡 Вот что я могу сделать:
+   • Повторить вопрос другими словами
+   • Привести больше примеров
+   • Объяснить зачем нужна информация
+   • Позвать Наталью (живого человека!)
+
+❓ Что вам нужно помощь?
+
+   1️⃣ Еще примеры правильного ввода
+   2️⃣ Объяснить вопрос подробнее
+   3️⃣ Позвонить Наталье: +7 (922) 014-44-94
+   4️⃣ Начать заново"""
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# НОВОЕ: ИНТЕЛЛЕКТУАЛЬНЫЕ ПОДСКАЗКИ
+# ════════════════════════════════════════════════════════════════════════════
+
+def should_provide_hint(context: UserContext, field: str) -> bool:
+    """Нужно ли показать подсказку на этом шаге?"""
+    
+    # На третьей ошибке точно показать подсказку
+    if context.error_count >= 3:
+        return True
+    
+    # Если пользователь запутался
+    if context.confusion_detected:
+        return True
+    
+    # Если много помощи запросил
+    if context.help_requests > 1:
+        return True
+    
+    return False
+
+
+def generate_intelligent_hint(field: str, user_input: str) -> str:
+    """
+    Умная подсказка на основе ошибки
+    НОВОЕ в v3.2: Контекстные подсказки
+    """
+    
+    hints = {
+        'child_fio': """💡 ФИО - это как в свидетельстве о рождении:
+   • Фамилия (Петров)
+   • Имя (Иван)
+   • Отчество (Сергеевич) - необязательно
+   
+Примеры:
+   ✅ Петров Иван
+   ✅ Сидорова Мария Ивановна""",
+        
+        'child_age': """💡 Возраст - просто цифра:
+   ✅ 3
+   ✅ пять
+   ✅ '4 года'
+   
+Наши программы для детей 3-12 лет.""",
+        
+        'kindergarten_number': """💡 Номер сада - это цифры:
+   ✅ 30
+   ✅ №30
+   ✅ 30 СП
+   ✅ Нет (если не ходит)""",
+        
+        'parent_phone': """💡 Телефон - 10-11 цифр:
+   ✅ +7 900 123-45-67
+   ✅ 89211234567
+   
+Не забудьте код страны/оператора!""",
+    }
+    
+    return hints.get(field, "💡 Попробуйте еще раз. Я верю, что у вас получится! 😊")
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# НОВОЕ: ОТСЛЕЖИВАНИЕ ВЗАИМОДЕЙСТВИЯ
+# ════════════════════════════════════════════════════════════════════════════
+
+class InteractionAnalytics:
+    """
+    Аналитика взаимодействия (только локально, не отправляем никуда)
+    НОВОЕ в v3.2: Обучение на основе ошибок
+    """
+    
+    def __init__(self):
+        self.session_data = {}
+    
+    def track_step(self, user_id: int, step: str, success: bool, time_spent: float):
+        """Отследить прохождение шага"""
+        if user_id not in self.session_data:
+            self.session_data[user_id] = []
+        
+        self.session_data[user_id].append({
+            'step': step,
+            'success': success,
+            'time_spent': time_spent,
+            'timestamp': datetime.now()
+        })
+    
+    def get_hardest_step(self) -> Optional[str]:
+        """Найти самый сложный шаг для пользователя"""
+        if not self.session_data:
+            return None
+        
+        step_stats = {}
+        for user_steps in self.session_data.values():
+            for record in user_steps:
+                step = record['step']
+                if step not in step_stats:
+                    step_stats[step] = {'errors': 0, 'total': 0}
+                
+                step_stats[step]['total'] += 1
+                if not record['success']:
+                    step_stats[step]['errors'] += 1
+        
+        if not step_stats:
+            return None
+        
+        # Найти шаг с максимальным процентом ошибок
+        hardest = max(
+            step_stats.items(),
+            key=lambda x: x[1]['errors'] / max(x[1]['total'], 1)
+        )
+        
+        return hardest[0]
