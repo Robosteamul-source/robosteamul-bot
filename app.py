@@ -1,14 +1,16 @@
 # -*- coding: utf-8 -*-
 """VK Callback API bot for RoboSTEAMuL.
 
-Version 3.2
+Version 3.3
 - registration asks for kindergarten NUMBER, not name;
 - application is sent to administrator only after parent confirmation;
 - SQLite persistence for sessions and applications;
 - VK callback secret/group validation and event deduplication;
 - safer phone/name/age validation;
 - unique random_id for VK messages;
-- configurable contacts and administrator through environment variables.
+- configurable contacts and administrator through environment variables;
+- complete list of kindergartens and schools with addresses and available programs;
+- institution search by number, name, address or command «филиалы».
 """
 
 from __future__ import annotations
@@ -112,6 +114,35 @@ PROGRAM_ALIASES = {
     "7": "school_45", "дошколенок 4-5": "school_45", "дошколёнок 4-5": "school_45",
     "8": "school_67", "дошколенок 6-7": "school_67", "дошколёнок 6-7": "school_67",
 }
+
+
+# Учреждения, в которых проходят занятия RoboSTEAMuL.
+# Для школ направления не указаны пользователем, поэтому бот не придумывает их
+# и предлагает уточнить актуальную программу у администратора.
+INSTITUTIONS = (
+    {"type": "ДОУ", "number": "30", "name": "ДОУ №30", "address": "ул. Зальцмана, 24", "programs": ("Робототехника", "Логопед", "Хореография", "Подготовка к школе")},
+    {"type": "ДОУ", "number": "30 СП", "name": "ДОУ №30 СП", "address": "ул. Зальцмана, 38", "programs": ("Робототехника", "Логопед", "Хореография", "Подготовка к школе")},
+    {"type": "ДОУ", "number": "44", "name": "ДОУ №44", "address": "ул. Конструктора Духова, 25", "programs": ("Робототехника", "Хореография")},
+    {"type": "ДОУ", "number": "44 СП", "name": "ДОУ №44 СП", "address": "ул. Конструктора Духова, 9", "programs": ("Хореография",)},
+    {"type": "ДОУ", "number": "475", "name": "ДОУ №475", "address": "ул. Салютная, 17а", "programs": ("Робототехника", "Хореография")},
+    {"type": "ДОУ", "number": "475", "name": "ДОУ №475", "address": "ул. Горького, 25а", "programs": ("Робототехника", "Хореография")},
+    {"type": "ДОУ", "number": "416", "name": "ДОУ №416", "address": "ул. Культуры, 59а", "programs": ("Робототехника",)},
+    {"type": "ДОУ", "number": "413", "name": "ДОУ №413", "address": "ул. Доватора, 18а", "programs": ("Робототехника", "Хореография")},
+    {"type": "ДОУ", "number": "369", "name": "ДОУ №369", "address": "ул. Танкистов, 152Б", "programs": ("Робототехника", "Подготовка к школе")},
+    {"type": "ДОУ", "number": "221 СП", "name": "ДОУ №221 СП", "address": "ул. Бажова, 24а", "programs": ("Робототехника", "Хореография")},
+    {"type": "ДОУ", "number": "418", "name": "ДОУ №418", "address": "ул. Шуменская, 8", "programs": ("Робототехника", "Хореография")},
+    {"type": "ДОУ", "number": "262", "name": "ДОУ №262", "address": "ул. Шуменская, 45", "programs": ("Робототехника",)},
+    {"type": "ДОУ", "number": "351", "name": "ДОУ №351", "address": "ул. Артиллерийская, 61а", "programs": ("Робототехника",)},
+    {"type": "ДОУ", "number": "421", "name": "ДОУ №421", "address": "ул. Руставели, 4а", "programs": ("Робототехника", "Хореография")},
+    {"type": "ДОУ", "number": "448", "name": "ДОУ №448", "address": "ул. Агалакова, 50а", "programs": ("Робототехника",)},
+    {"type": "ДОУ", "number": "448 СП", "name": "ДОУ №448 СП", "address": "ул. Гранитная, 4", "programs": ("Робототехника", "Хореография", "Подготовка к школе")},
+    {"type": "ДОУ", "number": "10", "name": "ДОУ №10 (Копейск)", "address": "ул. Международная, 76а", "programs": ("Робототехника",)},
+    {"type": "ДОУ", "number": "48", "name": "ДОУ №48", "address": "ул. Маршала Чуйкова, 25Б", "programs": ("Робототехника",)},
+    {"type": "ДОУ", "number": "18", "name": "ДОУ №18", "address": "ул. Скульптора Головницкого, 18", "programs": ("Робототехника",)},
+    {"type": "ДОУ", "number": "18 СП", "name": "ДОУ №18 СП", "address": "ул. Бейвеля, 38", "programs": ("Робототехника",)},
+    {"type": "Школа", "number": "76", "name": "Гимназия №76", "address": "ул. Барбюса, 140Б", "programs": ()},
+    {"type": "Школа", "number": "98", "name": "Школа №98", "address": "ул. Елькина, 78", "programs": ()},
+)
 
 # ---------------------------------------------------------------------------
 # Database
@@ -280,20 +311,58 @@ def validate_age(value: str) -> Tuple[bool, str]:
     return True, str(age)
 
 
-def validate_kindergarten_number(value: str) -> Tuple[bool, str]:
+def normalize_institution_query(value: str) -> str:
+    value = normalize_text(value).lower().replace("ё", "е")
+    value = value.replace("детский сад", "доу").replace("садик", "доу").replace("сад", "доу")
+    value = re.sub(r"№\s*", "", value)
+    value = re.sub(r"\s+", " ", value).strip()
+    return value
+
+
+def find_institutions(query: str) -> list[Dict[str, Any]]:
+    normalized = normalize_institution_query(query)
+    if not normalized:
+        return []
+    number_match = re.search(r"\d{1,4}(?:\s*сп)?", normalized)
+    requested_number = re.sub(r"\s+", " ", number_match.group(0)).upper() if number_match else ""
+    matches = []
+    for institution in INSTITUTIONS:
+        haystack = normalize_institution_query(
+            f"{institution['type']} {institution['number']} {institution['name']} {institution['address']}"
+        )
+        institution_number = re.sub(r"\s+", " ", institution["number"]).upper()
+        if requested_number:
+            if requested_number == institution_number:
+                matches.append(institution)
+        elif normalized in haystack:
+            matches.append(institution)
+    return matches
+
+
+def validate_institution(value: str) -> Tuple[bool, str]:
     value = normalize_text(value)
     if value.lower() in {"нет", "не посещает", "домашний", "не ходит"}:
-        return True, "Не посещает детский сад"
-    match = re.search(r"\d{1,4}(?:\s*сп)?", value.lower())
-    if not match:
-        return False, "Напишите именно номер детского сада, например: 30, 448 или 30 СП. Если ребёнок не посещает сад — напишите «нет»."
-    return True, match.group(0).upper().replace("  ", " ")
+        return True, "Не посещает детский сад или школу"
+    matches = find_institutions(value)
+    if matches:
+        if len(matches) == 1:
+            item = matches[0]
+            return True, f"{item['name']}, {item['address']}"
+        # Один номер может относиться к двум корпусам, например ДОУ №475.
+        return True, f"{matches[0]['name']} (адрес уточнит администратор)"
+    # Разрешаем указать другое учреждение, которого ещё нет в списке.
+    if re.search(r"\d{1,4}", value) or any(word in value.lower() for word in ("школ", "гимназ", "лицей", "доу")):
+        return True, value
+    return False, (
+        "Напишите номер или название детского сада/школы, например: «ДОУ 30», "
+        "«Школа 98» или «Гимназия 76». Если ребёнок не посещает учреждение — напишите «нет»."
+    )
 
 
 def validate_group(value: str) -> Tuple[bool, str]:
     value = normalize_text(value)
     if not value or len(value) > 80:
-        return False, "Напишите номер или название группы, например: 5, «Ромашка» или «старшая»."
+        return False, "Напишите номер или название группы/класса, например: 5, «Ромашка», «старшая» или 1А."
     return True, value
 
 
@@ -368,6 +437,33 @@ def contacts_text() -> str:
     return "\n".join(lines)
 
 
+def institution_card(item: Dict[str, Any]) -> str:
+    lines = [f"{item['name']}", f"📍 {item['address']}"]
+    if item["programs"]:
+        lines.append("Направления: " + ", ".join(item["programs"]))
+    else:
+        lines.append("Направления и расписание уточнит администратор.")
+    return "\n".join(lines)
+
+
+def institutions_text() -> str:
+    kindergartens = [item for item in INSTITUTIONS if item["type"] == "ДОУ"]
+    schools = [item for item in INSTITUTIONS if item["type"] == "Школа"]
+    blocks = ["📍 Где проходят занятия RoboSTEAMuL", "", "🏫 ДЕТСКИЕ САДЫ"]
+    blocks.extend(institution_card(item) for item in kindergartens)
+    blocks.extend(["", "🎓 ШКОЛЫ"])
+    blocks.extend(institution_card(item) for item in schools)
+    blocks.extend(["", "Для поиска напишите номер учреждения, например: «ДОУ 448 СП» или «Школа 98»."])
+    return "\n\n".join(blocks)
+
+
+def institution_search_text(query: str) -> Optional[str]:
+    matches = find_institutions(query)
+    if not matches:
+        return None
+    return "\n\n".join(institution_card(item) for item in matches)
+
+
 def programs_text() -> str:
     lines = ["Программы RoboSTEAMuL:"]
     for index, program in enumerate(PROGRAMS.values(), start=1):
@@ -397,7 +493,7 @@ def confirmation_text(session: Dict[str, Any]) -> str:
         "Проверьте заявку:\n\n"
         f"Ребёнок: {session['child_name']}\n"
         f"Возраст: {session['child_age']} лет\n"
-        f"Номер детского сада: {session['kindergarten_number']}\n"
+        f"Детский сад/школа: {session['kindergarten_number']}\n"
         f"Группа: {session['group_number']}\n"
         f"Родитель: {session['parent_name']}\n"
         f"Телефон: {session['parent_phone']}\n"
@@ -413,7 +509,7 @@ def admin_application_text(application_id: int, user_id: int, session: Dict[str,
         f"🔔 Новая заявка №{application_id}\n\n"
         f"Ребёнок: {session['child_name']}\n"
         f"Возраст: {session['child_age']} лет\n"
-        f"Детский сад №: {session['kindergarten_number']}\n"
+        f"Детский сад/школа: {session['kindergarten_number']}\n"
         f"Группа: {session['group_number']}\n"
         f"Родитель: {session['parent_name']}\n"
         f"Телефон: {session['parent_phone']}\n"
@@ -465,21 +561,21 @@ def process_registration(user_id: int, text: str, session: Dict[str, Any]) -> No
         session["child_age"] = int(value)
         session["step"] = 3
         reply = (
-            "Вопрос 3 из 7. Напишите НОМЕР детского сада, который посещает ребёнок.\n"
-            "Например: 30, 448 или 30 СП.\n"
-            "Если ребёнок не посещает детский сад — напишите «нет»."
+            "Вопрос 3 из 7. Напишите номер или название детского сада либо школы, которую посещает ребёнок.\n"
+            "Например: ДОУ 30, ДОУ 448 СП, Гимназия 76 или Школа 98.\n"
+            "Если ребёнок не посещает учреждение — напишите «нет»."
         )
 
     elif step == 3:
-        ok, value = validate_kindergarten_number(msg)
+        ok, value = validate_institution(msg)
         if not ok:
             vk_send(user_id, value)
             return
         session["kindergarten_number"] = value
         session["step"] = 4
         reply = (
-            "Вопрос 4 из 7. Напишите номер или название группы ребёнка в детском саду.\n"
-            "Например: 5, «Ромашка», «средняя». Если группы нет — напишите «нет»."
+            "Вопрос 4 из 7. Напишите номер или название группы/класса ребёнка.\n"
+            "Например: 5, «Ромашка», «старшая» или 1А. Если группы или класса нет — напишите «нет»."
         )
 
     elif step == 4:
@@ -570,6 +666,12 @@ def handle_message(user_id: int, text: str) -> None:
         start_registration(user_id)
     elif "программ" in low or "направлен" in low or "круж" in low:
         vk_send(user_id, programs_text())
+    elif any(word in low for word in ("филиал", "адрес", "детские сады", "детский сад", "школы", "где проходят")):
+        search_result = institution_search_text(text)
+        vk_send(user_id, search_result or institutions_text())
+    elif re.search(r"(?:доу|сад|школа|гимназия|лицей)\s*№?\s*\d+", low):
+        search_result = institution_search_text(text)
+        vk_send(user_id, search_result or "Такого учреждения пока нет в нашем списке. Напишите «филиалы», чтобы посмотреть все адреса.")
     elif "контакт" in low or "телефон" in low or "администратор" in low:
         vk_send(user_id, contacts_text())
     elif low in {"привет", "здравствуйте", "добрый день", "добрый вечер", "доброе утро", "начать", "старт"}:
@@ -583,6 +685,7 @@ def handle_message(user_id: int, text: str) -> None:
             "Напишите:\n"
             "• «программы» — список направлений;\n"
             "• «запись» — оформить заявку;\n"
+            "• «филиалы» — детские сады и школы;\n"
             "• «контакты» — связаться с администратором.",
         )
 
@@ -636,7 +739,7 @@ def callback() -> Tuple[str, int]:
 
 @app.get("/")
 def index():
-    return jsonify(status="ok", service="RoboSTEAMuL VK bot", version="3.1")
+    return jsonify(status="ok", service="RoboSTEAMuL VK bot", version="3.3")
 
 
 @app.get("/health")
@@ -662,7 +765,7 @@ def stats():
     with closing(db_connect()) as conn:
         active_sessions = conn.execute("SELECT COUNT(*) FROM sessions WHERE step > 0").fetchone()[0]
         applications = conn.execute("SELECT COUNT(*) FROM applications").fetchone()[0]
-    return jsonify(active_sessions=active_sessions, applications=applications, version="3.1")
+    return jsonify(active_sessions=active_sessions, applications=applications, version="3.3")
 
 
 init_db()
