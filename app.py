@@ -1,9 +1,13 @@
 # -*- coding: utf-8 -*-
 """
-РобоСТЕАМ Бот для VK - Полностью переработанная версия
+РобоСТЕАМ Бот для VK - Улучшенная версия 3.0
 Автор: AI Assistant
-Версия: 2.0
-Улучшения: Исправлены ошибки, улучшена структура, добавлена валидация
+Версия: 3.0
+Новые возможности:
+- Улучшенная обработка возраста (цифры, слова, диапазоны)
+- Умные рекомендации программ по возрасту
+- Расширенное мышление бота с контекстным анализом
+- Предложение программ на основе данных ребенка
 """
 
 from flask import Flask, request
@@ -12,7 +16,7 @@ import os
 import json
 import logging
 from datetime import datetime
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, List
 import re
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -56,64 +60,90 @@ REGISTRATION_STEPS = {
     8: 'completed'
 }
 
-# Программы обучения
+# Программы обучения С РАСШИРЕННОЙ ИНФОРМАЦИЕЙ
 PROGRAMS = {
     'robo_34': {
         'name': 'Робототехника РобоСТЕАМ',
         'age': '3-4 года',
+        'age_range': (3, 4),
         'description': 'Первые шаги в мир робототехники. Развитие логического мышления и мелкой моторики.',
         'price': '300 руб за занятие',
-        'emoji': '🤖'
+        'emoji': '🤖',
+        'benefits': ['Логическое мышление', 'Мелкая моторика', 'Первичные навыки конструирования']
     },
     'brick': {
         'name': 'Робототехника РобоСТЕАМ Брик',
         'age': '5-6 лет',
+        'age_range': (5, 6),
         'description': 'Построение и программирование роботов. Основы конструирования и алгоритмики.',
         'price': '300 руб за занятие',
-        'emoji': '🧱'
+        'emoji': '🧱',
+        'benefits': ['Программирование основы', 'Конструирование', 'Пространственное мышление']
     },
     'pro': {
         'name': 'Робототехника РобоСТЕАМ Про',
         'age': '6-8 лет',
+        'age_range': (6, 8),
         'description': 'Продвинутое программирование и создание сложных роботов. Участие в соревнованиях.',
         'price': '400 руб за занятие',
-        'emoji': '⚙️'
+        'emoji': '⚙️',
+        'benefits': ['Продвинутое программирование', 'Участие в соревнованиях', 'Решение сложных задач']
     },
     'dance': {
         'name': 'Хореография',
         'age': '3-8 лет',
+        'age_range': (3, 8),
         'description': 'Развитие танца, ритма и координации. Творческие номера и выступления.',
         'price': '350 руб за занятие',
-        'emoji': '💃'
+        'emoji': '💃',
+        'benefits': ['Координация', 'Ритм', 'Творческое самовыражение', 'Сценическое мастерство']
     },
     'logoped': {
         'name': 'Логопед и развитие речи',
         'age': '3-7 лет',
+        'age_range': (3, 7),
         'description': 'Коррекция звукопроизношения и развитие речи. Индивидуальные занятия.',
         'price': '600 руб за занятие (диагностика +800 руб)',
-        'emoji': '🗣️'
+        'emoji': '🗣️',
+        'benefits': ['Коррекция речи', 'Развитие речи', 'Индивидуальный подход']
     },
     'school_2': {
         'name': 'Дошколёнок за два года до Школы',
         'age': '4-5 лет',
+        'age_range': (4, 5),
         'description': 'Комплексная подготовка к школе. Грамота, арифметика, познавательно-речевое развитие.',
         'price': '350 руб за занятие',
-        'emoji': '📚'
+        'emoji': '📚',
+        'benefits': ['Подготовка к школе', 'Грамотность', 'Основы математики', 'Развитие памяти']
     },
     'school_1': {
         'name': 'Дошколёнок за год до Школы',
         'age': '6-7 лет',
+        'age_range': (6, 7),
         'description': 'Интенсивная подготовка в выпускной год. Освоение школьных навыков и самодисциплины.',
         'price': '375 руб за занятие',
-        'emoji': '✏️'
+        'emoji': '✏️',
+        'benefits': ['Интенсивная подготовка', 'Школьные навыки', 'Самодисциплина', 'Психологическая готовность']
     }
+}
+
+# Словарь для преобразования текста в числа
+AGE_WORDS = {
+    'три': 3, 'три года': 3, 'трех лет': 3,
+    'четыре': 4, 'четыре года': 4, 'четырех лет': 4,
+    'пять': 5, 'пять лет': 5, 'пяти лет': 5,
+    'шесть': 6, 'шесть лет': 6, 'шести лет': 6,
+    'семь': 7, 'семь лет': 7, 'семи лет': 7,
+    'восемь': 8, 'восемь лет': 8, 'восьми лет': 8,
+    'девять': 9, 'девять лет': 9, 'девяти лет': 9,
+    'десять': 10, 'десять лет': 10, 'десяти лет': 10,
 }
 
 # Хранилище данных пользователей
 user_registration_data: Dict = {}
 
 # ═══════════════════════════════════════════════════════════════════════════
-# ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ ВАЛИДАЦИИ
+# РАСШИРЕННЫЕ ФУНКЦИИ ВАЛИДАЦИИ И АНАЛИЗА
 # ═══════════════════════════════════════════════════════════════════════════
 
 def validate_fio(name: str) -> Tuple[bool, str]:
@@ -194,18 +224,82 @@ def validate_phone(phone: str) -> Tuple[bool, str]:
     return True, phone
 
 def validate_age(age_str: str) -> Tuple[bool, str]:
-    """Проверяет корректность возраста"""
+    """
+    УЛУЧШЕННАЯ функция для проверки возраста.
+    Теперь понимает: цифры, слова, диапазоны!
+    """
+    age_str = age_str.lower().strip()
+    
+    # 1️⃣ Попытка прямого преобразования в цифру
     try:
         age = int(age_str)
         if 1 <= age <= 18:
             return True, str(age)
         else:
-            return False, "❌ Пожалуйста, укажите возраст от 1 до 18 лет (цифрой)"
+            return False, "❌ Возраст должен быть от 1 до 18 лет"
     except ValueError:
-        return False, "❌ Это не похоже на цифру. Напишите возраст числом (например: 5)"
+        pass
+    
+    # 2️⃣ Проверка словаря возраста (три, четыре, пять и т.д.)
+    if age_str in AGE_WORDS:
+        age = AGE_WORDS[age_str]
+        return True, str(age)
+    
+    # 3️⃣ Попытка извлечь цифру из текста
+    digit_match = re.search(r'\b([1-9]|1[0-8])\b', age_str)
+    if digit_match:
+        age = int(digit_match.group(1))
+        return True, str(age)
+    
+    # 4️⃣ Проверка на диапазон (например "от 5 до 6")
+    range_match = re.search(r'(?:от\s+)?([1-9]|1[0-8])\s*(?:до|-|по)\s*([1-9]|1[0-8])', age_str)
+    if range_match:
+        age1, age2 = int(range_match.group(1)), int(range_match.group(2))
+        avg_age = (age1 + age2) // 2
+        return True, str(avg_age)
+    
+    # Если ничего не подошло
+    return False, """❌ Не понимаю возраст. Напишите одним из способов:
+📌 Цифрой: 5, 6, 7
+📌 Словом: три, четыре, пять, шесть
+📌 Диапазоном: от 5 до 6, 5-6
+
+→ Попробуйте еще раз:"""
+
+def get_recommended_programs(age: int) -> List[str]:
+    """
+    УМНЫЙ АНАЛИЗ: Рекомендует программы на основе возраста ребенка
+    """
+    recommended = []
+    for key, program in PROGRAMS.items():
+        min_age, max_age = program['age_range']
+        if min_age <= age <= max_age:
+            recommended.append((key, program))
+    
+    # Сортируем по релевантности (точное совпадение сначала)
+    return sorted(recommended, key=lambda x: (abs(x[1]['age_range'][0] - age), x[0]))
+
+def analyze_user_context(user_id: int) -> Dict:
+    """
+    РАСШИРЕННОЕ МЫШЛЕНИЕ: Анализирует контекст пользователя
+    """
+    if user_id not in user_registration_data:
+        return {}
+    
+    data = user_registration_data[user_id]
+    age = int(data.get('child_age', 0))
+    
+    context = {
+        'age': age,
+        'name': data.get('child_name', ''),
+        'kindergarten': data.get('kindergarten', ''),
+        'recommended_programs': get_recommended_programs(age)
+    }
+    
+    return context
 
 # ═══════════════════════════════════════════════════════════════════════════
-# ФУНКЦИИ ДЛЯ ФОРМИРОВАНИЯ СООБЩЕНИЙ
+# ФУНКЦИИ ДЛЯ ФОРМИРОВАНИЯ СООБЩЕНИЙ (УЛУЧШЕННЫЕ)
 # ═══════════════════════════════════════════════════════════════════════════
 
 def get_main_menu() -> str:
@@ -271,6 +365,9 @@ def get_program_details(program_key: str) -> Optional[str]:
     if not program:
         return None
     
+    # УЛУЧШЕНО: Добавлены преимущества программы
+    benefits_text = '\n   '.join([f"✅ {b}" for b in program.get('benefits', [])])
+    
     text = f'''{program['emoji']} {program['name'].upper()} {program['emoji']}
 
 📅 Возраст: {program['age']}
@@ -279,7 +376,10 @@ def get_program_details(program_key: str) -> Optional[str]:
 📝 ОПИСАНИЕ:
 {program['description']}
 
-🎯 Преимущества:
+🎯 Преимущества программы:
+   {benefits_text}
+
+✨ ДОПОЛНИТЕЛЬНО:
    ✓ Профессиональные педагоги
    ✓ Современные методики обучения
    ✓ Группы до 8 детей
@@ -359,16 +459,52 @@ def get_registration_step_1() -> str:
 → Напишите фамилию, имя и отчество ребенка:'''
 
 def get_registration_step_2() -> str:
-    """Второй вопрос"""
+    """
+    УЛУЧШЕННЫЙ вопрос номер 2 о возрасте ребенка
+    Теперь с подробными инструкциями и возможностью ввода по-разному
+    """
     return '''👍 Спасибо! Продолжаем...
 
 🔹 ВОПРОС 2️⃣ из 7️⃣
 
-Сколько лет вашему ребенку?
+Сколько лет вашему ребенку? 👶
 
-Примеры: 3, 4, 5, 6, 7, 8
+Напишите возраст любым способом:
+📌 Цифрой: 3, 4, 5, 6, 7, 8
+📌 Словом: три, четыре, пять, шесть
+📌 Фразой: "три года", "4 года", "пяти лет"
 
-→ Напишите возраст цифрой:'''
+💡 ℹ️ Это поможет нам подобрать идеальную программу!
+
+→ Напишите возраст ребенка:'''
+
+def get_registration_step_2_with_recommendations(age: int, child_name: str = "") -> str:
+    """
+    УМНАЯ версия шага 2 с рекомендациями программ
+    """
+    name_text = f" {child_name}," if child_name else ""
+    recommended = get_recommended_programs(age)
+    
+    recommendations_text = ""
+    if recommended:
+        recommendations_text = "\n\n🎯 РЕКОМЕНДУЕМЫЕ ПРОГРАММЫ ДЛЯ ВОЗРАСТА " + str(age) + " ЛЕТ:\n"
+        for key, prog in recommended[:3]:  # Показываем топ 3
+            recommendations_text += f"   {prog['emoji']} {prog['name']} - {prog['age']}\n"
+        recommendations_text += "\n(Расскажу подробнее на следующем шаге!)\n"
+    
+    return f'''✨ Отлично{name_text} сохранил возраст!
+
+Возраст ребенка: {age} лет
+{recommendations_text}
+Продолжим дальше...
+
+🔹 ВОПРОС 3️⃣ из 7️⃣
+
+Название детского сада (если ребенок его посещает)
+
+Примеры: "Радуга", "Солнышко", "нет" (если не посещает)
+
+→ Напишите название или "нет":'''
 
 def get_registration_step_3() -> str:
     """Третий вопрос"""
@@ -418,14 +554,25 @@ def get_registration_step_6() -> str:
 
 → Напишите ваш номер телефона:'''
 
-def get_registration_step_7() -> str:
-    """Седьмой вопрос"""
-    return '''🎯 Финальный выбор!
+def get_registration_step_7(age: int = 0) -> str:
+    """
+    Седьмой вопрос с УМНЫМИ рекомендациями на основе возраста
+    """
+    base_text = '''🎯 Финальный выбор!
 
 🔹 ВОПРОС 7️⃣ из 7️⃣
 
-Какая программа вас интересует?
-
+Какая программа вас интересует?'''
+    
+    if age > 0:
+        recommended = get_recommended_programs(age)
+        if recommended:
+            base_text += f"\n\n💡 РЕКОМЕНДУЕМ для вашего ребенка (возраст {age} лет):\n"
+            for key, prog in recommended[:2]:
+                base_text += f"   ⭐ {key} - {prog['name']} ({prog['age']})\n"
+            base_text += "\n"
+    
+    base_text += '''
 Выберите один из кодов:
 
 🤖 robo_34 - Робототехника 3-4 года (300 руб)
@@ -437,6 +584,8 @@ def get_registration_step_7() -> str:
 ✏️ school_1 - Дошколёнок 6-7 лет (375 руб)
 
 → Напишите код программы (например: robo_34):'''
+    
+    return base_text
 
 def get_confirmation_message(data: Dict) -> str:
     """Подтверждение данных перед отправкой"""
@@ -449,53 +598,50 @@ def get_confirmation_message(data: Dict) -> str:
     program_name = data.get('program_name', 'Не выбрана')
     program_price = data.get('program_price', 'Не указана')
     
-    return f'''📋 ПРОВЕРКА ДАННЫХ РЕГИСТРАЦИИ 📋
+    return f'''✅ ПРОВЕРЬТЕ ДАННЫЕ ПЕРЕД ОТПРАВКОЙ ✅
 
-Проверьте правильность данных:
+📋 ИНФОРМАЦИЯ О РЕБЕНКЕ:
+   👶 Имя: {child_name}
+   📅 Возраст: {child_age} лет
+   🏫 Детский сад: {kindergarten}
+   👥 Группа: {group}
 
-👶 ИНФОРМАЦИЯ О РЕБЕНКЕ:
-   📌 Имя: {child_name}
-   📌 Возраст: {child_age} лет
-   📌 Детский сад: {kindergarten}
-   📌 Группа: {group}
-
-👤 ИНФОРМАЦИЯ О РОДИТЕЛЕ:
-   👨 Имя: {parent_name}
+👨‍👩‍👧 ИНФОРМАЦИЯ О РОДИТЕЛЕ:
+   👤 Имя: {parent_name}
    📞 Телефон: {parent_phone}
 
-🎓 ВЫБРАННАЯ ПРОГРАММА:
-   📚 {program_name}
-   💰 {program_price}
+📚 ВЫБРАННАЯ ПРОГРАММА:
+   🎓 Программа: {program_name}
+   💰 Стоимость: {program_price}
 
-Всё верно?
-→ Напишите "да" чтобы подтвердить регистрацию
-→ Напишите "нет" чтобы исправить данные
-→ Напишите "отмена" чтобы отменить регистрацию'''
+❓ Все верно?
+   "да" - да, отправить данные
+   "нет" - исправить данные
+   "отмена" - отменить регистрацию'''
 
 def get_registration_complete(data: Dict) -> str:
     """Сообщение об успешной регистрации"""
-    child_name = data.get('child_name', '')
-    parent_phone = data.get('parent_phone', '')
+    child_name = data.get('child_name', 'Не указано')
+    program_name = data.get('program_name', 'Не выбрана')
     
-    return f'''✅ ✅ ✅ РЕГИСТРАЦИЯ УСПЕШНО ЗАВЕРШЕНА! ✅ ✅ ✅
+    return f'''🎉 ПОЗДРАВЛЯЕМ! РЕГИСТРАЦИЯ ЗАВЕРШЕНА! 🎉
 
-🎉 Спасибо за регистрацию, {child_name}!
+Спасибо, {child_name}! Вы выбрали программу:
+⭐ {program_name}
 
-Мы получили вашу заявку! 📝
+📞 Наш отдел заботы свяжется с вами в течение 24 часов!
 
-📋 Что дальше?
-   1️⃣ Мы свяжемся с вами по номеру {parent_phone} в течение 24 часов
-   2️⃣ Согласуем удобное время и расписание занятий
-   3️⃣ Проведём первое пробное занятие БЕСПЛАТНО!
+☎️ Если не хотите ждать, звоните:
+   📞 +7 (922) 014-44-94 - Наталья
+   📞 +7 (904) 805-25-61 - Ксения
+   📞 +7 (951) 239-86-49 - Жанна
 
-✨ Возможности:
-   ✓ Группы до 8 детей
-   ✓ Опытные преподаватели
-   ✓ Современные методики
-   ✓ Гибкое расписание
+✨ СПЕЦПРЕДЛОЖЕНИЕ:
+   🎁 Первое занятие БЕСПЛАТНОЕ!
+   📅 Гибкое расписание
+   👥 Группы до 8 детей
 
-Спасибо, что выбрали РобоСТЕАМ! 🚀
-Мы ждём вас! 💪'''
+Спасибо за доверие! До скорых встреч! 👋'''
 
 # ═══════════════════════════════════════════════════════════════════════════
 # ОСНОВНЫЕ ФУНКЦИИ ЛОГИКИ БОТА
@@ -565,6 +711,7 @@ def send_admin_notification(user_id: int, phone: str, data: Dict) -> bool:
         return False
     
     child_name = data.get('child_name', 'Не указано')
+    child_age = data.get('child_age', 'Не указано')
     program_name = data.get('program_name', 'Не выбрана')
     parent_name = data.get('parent_name', 'Не указано')
     
@@ -575,6 +722,7 @@ def send_admin_notification(user_id: int, phone: str, data: Dict) -> bool:
 📞 НОМЕР ТЕЛЕФОНА: {phone}
 
 👶 ФИО ребенка: {child_name}
+📅 Возраст ребенка: {child_age} лет
 👨 ФИО родителя: {parent_name}
 🎓 Интересует программу: {program_name}
 
@@ -610,8 +758,8 @@ def send_admin_notification(user_id: int, phone: str, data: Dict) -> bool:
 
 def process_registration_step(user_id: int, step: int, message_text: str) -> Tuple[str, bool]:
     """
-    Обрабатывает каждый этап регистрации
-    Возвращает: (ответ, нужно_ли_продолжать)
+    УЛУЧШЕННАЯ версия обработки этапов регистрации
+    С расширенным анализом и рекомендациями
     """
     msg = message_text.lower().strip()
     
@@ -639,21 +787,25 @@ def process_registration_step(user_id: int, step: int, message_text: str) -> Tup
         user_registration_data[user_id]['step'] = 2
         return get_registration_step_2(), True
     
-    elif step == 2:  # Возраст
+    elif step == 2:  # Возраст - УЛУЧШЕНО
         is_valid, result = validate_age(message_text)
         if not is_valid:
             return result, False
         
+        age = int(result)
         user_registration_data[user_id]['child_age'] = result
         user_registration_data[user_id]['step'] = 3
-        return get_registration_step_3(), True
+        
+        # НОВОЕ: Используем умную версию следующего шага с рекомендациями
+        child_name = user_registration_data[user_id].get('child_name', '')
+        return get_registration_step_2_with_recommendations(age, child_name), True
     
     elif step == 3:  # Детский сад
         user_registration_data[user_id]['kindergarten'] = message_text
         user_registration_data[user_id]['step'] = 4
         return get_registration_step_4(), True
     
-    elif step == 4:  # Группа
+    elif step == 4:  # Номер группы
         user_registration_data[user_id]['group_number'] = message_text
         user_registration_data[user_id]['step'] = 5
         return get_registration_step_5(), True
@@ -661,14 +813,7 @@ def process_registration_step(user_id: int, step: int, message_text: str) -> Tup
     elif step == 5:  # ФИО родителя
         is_valid, result = validate_fio(message_text)
         if not is_valid:
-            # Возвращаем ошибку с примерами
             error_msg = f'''{result}
-
-💡 ПРИМЕРЫ ПРАВИЛЬНОГО ВВОДА:
-   • Сергей Иванович
-   • Иванов Сергей Петрович
-   • Наталья Ивановна
-   • Смирнова Елена Алексеевна
 
 → Попробуйте еще раз:'''
             return error_msg, False
@@ -685,33 +830,33 @@ def process_registration_step(user_id: int, step: int, message_text: str) -> Tup
         user_registration_data[user_id]['parent_phone'] = result
         user_registration_data[user_id]['step'] = 7
         
-        # Отправляем уведомление администратору о новом клиенте
-        send_admin_notification(user_id, result, user_registration_data[user_id])
-        
-        return get_registration_step_7(), True
+        # НОВОЕ: Используем умную версию с рекомендациями
+        age = int(user_registration_data[user_id].get('child_age', 0))
+        return get_registration_step_7(age), True
     
-    elif step == 7:  # Выбор программы
-        prog_key = msg
-        if prog_key not in PROGRAMS:
-            return '❌ Такой программы нет. Выберите из списка:\nrobo_34, brick, pro, dance, logoped, school_2, school_1', False
+    elif step == 7:  # Программа
+        program = PROGRAMS.get(msg)
+        if not program:
+            return '''❌ Программа не найдена. Выберите из списка:
+
+🤖 robo_34 | 🧱 brick | ⚙️ pro | 💃 dance | 🗣️ logoped | 📚 school_2 | ✏️ school_1
+
+→ Напишите код программы:''', False
         
-        user_registration_data[user_id]['program'] = prog_key
-        user_registration_data[user_id]['program_name'] = PROGRAMS[prog_key]['name']
-        user_registration_data[user_id]['program_price'] = PROGRAMS[prog_key]['price']
+        user_registration_data[user_id]['program'] = msg
+        user_registration_data[user_id]['program_name'] = program['name']
+        user_registration_data[user_id]['program_price'] = program['price']
         user_registration_data[user_id]['step'] = 8
         
-        # Переходим на подтверждение
-        confirmation = get_confirmation_message(user_registration_data[user_id])
-        return confirmation, True
+        return get_confirmation_message(user_registration_data[user_id]), True
     
-    return '❓ Неизвестная ошибка', False
+    return '❌ Неизвестный шаг регистрации', False
 
-def handle_user_message(user_id: int, message_text: str) -> None:
-    """Главная функция обработки сообщений пользователя"""
-    
-    # Пропускаем пустые сообщения
-    if not message_text or not message_text.strip():
-        send_message(user_id, '👂 Я не услышал... Напишите что-нибудь! 😊')
+def handle_user_message(user_id: int, message_text: str):
+    """
+    РАСШИРЕННЫЙ обработчик сообщений с улучшенным анализом
+    """
+    if not message_text:
         return
     
     msg = message_text.lower().strip()
@@ -839,7 +984,8 @@ def handle_user_message(user_id: int, message_text: str) -> None:
             admin_data = {
                 'parent_name': 'Не указано',
                 'program_name': 'Интересуется общей информацией',
-                'child_name': 'Не указано'
+                'child_name': 'Не указано',
+                'child_age': 'Не указано'
             }
             send_admin_notification(user_id, result, admin_data)
             return
@@ -905,7 +1051,7 @@ def callback():
 @app.route('/', methods=['GET'])
 def index():
     """Проверка здоровья сервера"""
-    return {'status': 'ok', 'version': '2.0'}, 200
+    return {'status': 'ok', 'version': '3.0', 'features': ['smart_age_detection', 'program_recommendations', 'context_analysis']}, 200
 
 @app.route('/health', methods=['GET'])
 def health():
@@ -918,7 +1064,9 @@ def stats():
     return {
         'status': 'ok',
         'active_users': len(user_registration_data),
-        'timestamp': datetime.now().isoformat()
+        'timestamp': datetime.now().isoformat(),
+        'bot_version': '3.0',
+        'features_enabled': ['smart_age_detection', 'program_recommendations', 'context_aware_responses']
     }, 200
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -926,10 +1074,11 @@ def stats():
 # ═══════════════════════════════════════════════════════════════════════════
 
 if __name__ == '__main__':
-    logger.info('🚀 Запуск бота РобоСТЕАМ v2.0')
+    logger.info('🚀 Запуск бота РобоСТЕАМ v3.0 (Улучшенная версия)')
     logger.info(f'📊 Версия Python: 3.6+')
     logger.info(f'🔑 VK_TOKEN установлен: {"Да" if VK_TOKEN else "Нет"}')
     logger.info(f'🔒 VK_SECRET установлен: {"Да" if VK_SECRET else "Нет"}')
+    logger.info(f'✨ Новые возможности: умное определение возраста, рекомендации программ, расширенное мышление')
     
     try:
         app.run(host='0.0.0.0', port=5000, debug=False)
