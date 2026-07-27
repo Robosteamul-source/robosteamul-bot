@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """VK Callback API bot for RoboSTEAMuL.
 
-Version 3.0
+Version 3.1
 - registration asks for kindergarten NUMBER, not name;
 - application is sent to administrator only after parent confirmation;
 - SQLite persistence for sessions and applications;
@@ -49,19 +49,24 @@ logger = logging.getLogger("robosteamul_bot")
 
 PROGRAMS: Dict[str, Dict[str, str]] = {
     "robo_34": {
-        "name": "РобоСТИМ",
+        "name": "Робототехника «РобоСТЕАМ»",
         "age": "3–4 года",
         "description": "Первое знакомство с инженерией, конструированием и логикой в игровой форме.",
     },
     "brick": {
-        "name": "РобоСТИМ Брик",
-        "age": "5–6 лет",
+        "name": "Робототехника «РобоСТЕАМ Брик»",
+        "age": "4–5 лет",
         "description": "Конструирование, механизмы, алгоритмы и развитие инженерного мышления.",
     },
     "pro": {
-        "name": "РобоСТИМ Про",
-        "age": "6–8 лет",
+        "name": "Робототехника «РобоСТЕАМ Про»",
+        "age": "5–7 лет",
         "description": "Сложные модели, механизмы, программирование и подготовка к соревнованиям.",
+    },
+    "pro_plus": {
+        "name": "Робототехника «РобоСТЕАМ Про+»",
+        "age": "7–12 лет",
+        "description": "Углублённая робототехника, программирование, инженерные проекты и подготовка к соревнованиям.",
     },
     "dance": {
         "name": "Хореография «СоТворяшки»",
@@ -86,13 +91,19 @@ PROGRAMS: Dict[str, Dict[str, str]] = {
 }
 
 PROGRAM_ALIASES = {
-    "1": "robo_34", "робостим": "robo_34", "робототехника 3-4": "robo_34",
-    "2": "brick", "брик": "brick", "робостим брик": "brick",
-    "3": "pro", "про": "pro", "робостим про": "pro",
-    "4": "dance", "танцы": "dance", "хореография": "dance",
-    "5": "logoped", "логопед": "logoped", "речь": "logoped",
-    "6": "school_45", "дошколенок 4-5": "school_45", "дошколёнок 4-5": "school_45",
-    "7": "school_67", "дошколенок 6-7": "school_67", "дошколёнок 6-7": "school_67",
+    "1": "robo_34", "робостеам": "robo_34", "робостим": "robo_34",
+    "робототехника робостеам": "robo_34", "робототехника 3-4": "robo_34",
+    "2": "brick", "брик": "brick", "робостеам брик": "brick", "робостим брик": "brick",
+    "робототехника робостеам брик": "brick", "робототехника 4-5": "brick",
+    "3": "pro", "про": "pro", "робостеам про": "pro", "робостим про": "pro",
+    "робототехника робостеам про": "pro", "робототехника 5-7": "pro",
+    "4": "pro_plus", "про+": "pro_plus", "про плюс": "pro_plus",
+    "робостеам про+": "pro_plus", "робостеам про плюс": "pro_plus",
+    "робототехника робостеам про+": "pro_plus", "робототехника 7-12": "pro_plus",
+    "5": "dance", "танцы": "dance", "хореография": "dance",
+    "6": "logoped", "логопед": "logoped", "речь": "logoped",
+    "7": "school_45", "дошколенок 4-5": "school_45", "дошколёнок 4-5": "school_45",
+    "8": "school_67", "дошколенок 6-7": "school_67", "дошколёнок 6-7": "school_67",
 }
 
 # ---------------------------------------------------------------------------
@@ -257,8 +268,8 @@ def validate_age(value: str) -> Tuple[bool, str]:
     if not match:
         return False, "Напишите возраст цифрой, например: 5."
     age = int(match.group())
-    if not 3 <= age <= 8:
-        return False, "Сейчас программы рассчитаны на детей от 3 до 8 лет. Укажите возраст в этом диапазоне."
+    if not 3 <= age <= 12:
+        return False, "Сейчас программы рассчитаны на детей от 3 до 12 лет. Укажите возраст в этом диапазоне."
     return True, str(age)
 
 
@@ -353,13 +364,14 @@ def programs_text() -> str:
 def program_choices() -> str:
     return (
         "Вопрос 7 из 7. Какое направление вас интересует?\n\n"
-        "1 — РобоСТИМ, 3–4 года\n"
-        "2 — РобоСТИМ Брик, 5–6 лет\n"
-        "3 — РобоСТИМ Про, 6–8 лет\n"
-        "4 — Хореография, 3–8 лет\n"
-        "5 — Логопед и развитие речи, 3–7 лет\n"
-        "6 — Дошколёнок, 4–5 лет\n"
-        "7 — Дошколёнок, 6–7 лет\n\n"
+        "1 — Робототехника «РобоСТЕАМ», 3–4 года\n"
+        "2 — Робототехника «РобоСТЕАМ Брик», 4–5 лет\n"
+        "3 — Робототехника «РобоСТЕАМ Про», 5–7 лет\n"
+        "4 — Робототехника «РобоСТЕАМ Про+», 7–12 лет\n"
+        "5 — Хореография, 3–8 лет\n"
+        "6 — Логопед и развитие речи, 3–7 лет\n"
+        "7 — Дошколёнок, 4–5 лет\n"
+        "8 — Дошколёнок, 6–7 лет\n\n"
         "Напишите цифру или название направления."
     )
 
@@ -609,7 +621,7 @@ def callback() -> Tuple[str, int]:
 
 @app.get("/")
 def index():
-    return jsonify(status="ok", service="RoboSTEAMuL VK bot", version="3.0")
+    return jsonify(status="ok", service="RoboSTEAMuL VK bot", version="3.1")
 
 
 @app.get("/health")
@@ -635,7 +647,7 @@ def stats():
     with closing(db_connect()) as conn:
         active_sessions = conn.execute("SELECT COUNT(*) FROM sessions WHERE step > 0").fetchone()[0]
         applications = conn.execute("SELECT COUNT(*) FROM applications").fetchone()[0]
-    return jsonify(active_sessions=active_sessions, applications=applications, version="3.0")
+    return jsonify(active_sessions=active_sessions, applications=applications, version="3.1")
 
 
 init_db()
