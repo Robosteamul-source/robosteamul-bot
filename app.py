@@ -740,11 +740,15 @@ def get_registration_step_4() -> str:
 
 🔹 ВОПРОС 4️⃣ из 7️⃣
 
-Номер группы в детском саду
+Номер детского сада или адрес детского сада
 
-Примеры: "первая младшая", "средняя", "1", "нет"
+Уточните, какой конкретно детский сад посещает ребенок.
 
-→ Напишите номер группы или "нет":'''
+Напишите одно из:
+📌 Номер (например: 30, 44, 475)
+📌 Адрес или улицу (например: Зальцмана 24, ул. Духова 25)
+
+→ Напишите номер или адрес детского сада:'''
 
 def get_registration_step_5() -> str:
     """Пятый вопрос"""
@@ -1126,10 +1130,45 @@ def process_registration_step(user_id: int, step: int, message_text: str) -> Tup
 → Напишите еще раз:'''
         return response, False
     
-    elif step == 4:  # Номер группы
-        user_registration_data[user_id]['group_number'] = message_text
-        user_registration_data[user_id]['step'] = 5
-        return get_registration_step_5(), True
+    elif step == 4:  # Номер или адрес детского сада
+        msg = message_text.lower().strip()
+        
+        # Попытка найти сад по номеру
+        try:
+            kg_id_float = float(message_text) if '.' in message_text else int(message_text)
+            kg = get_kindergarten_info(kg_id_float)
+            if kg:
+                user_registration_data[user_id]['kindergarten'] = kg['name']
+                user_registration_data[user_id]['kindergarten_address'] = kg['address']
+                user_registration_data[user_id]['kindergarten_id'] = str(kg_id_float)
+                user_registration_data[user_id]['step'] = 5
+                return get_registration_step_5(), True
+        except:
+            pass
+        
+        # Если не найдено по номеру, ищем по адресу
+        found_kg = None
+        for kg_id, kg_info in KINDERGARTENS.items():
+            if msg in kg_info['address'].lower():
+                found_kg = (kg_id, kg_info)
+                break
+        
+        if found_kg:
+            kg_id, kg_info = found_kg
+            user_registration_data[user_id]['kindergarten'] = kg_info['name']
+            user_registration_data[user_id]['kindergarten_address'] = kg_info['address']
+            user_registration_data[user_id]['kindergarten_id'] = str(kg_id)
+            user_registration_data[user_id]['step'] = 5
+            return get_registration_step_5(), True
+        
+        # Если ничего не найдено
+        return f'''❌ Сад не найден: "{message_text}"
+
+Напишите:
+📌 Номер (например: 30, 44, 475)
+📌 Адрес (например: Зальцмана, Духова)
+
+→ Попробуйте еще раз:''', False
     
     elif step == 5:  # ФИО родителя
         is_valid, result = validate_fio(message_text)
