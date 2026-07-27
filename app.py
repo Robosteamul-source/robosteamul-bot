@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """VK Callback API bot for RoboSTEAMuL.
 
-Version 3.3
+Version 3.4
 - registration asks for kindergarten NUMBER, not name;
 - application is sent to administrator only after parent confirmation;
 - SQLite persistence for sessions and applications;
@@ -10,7 +10,8 @@ Version 3.3
 - unique random_id for VK messages;
 - configurable contacts and administrator through environment variables;
 - complete list of kindergartens and schools with addresses and available programs;
-- institution search by number, name, address or command «филиалы».
+- institution search by number, name, address or command «филиалы»;
+- current lesson prices and age-based pricing in program cards and applications.
 """
 
 from __future__ import annotations
@@ -56,45 +57,53 @@ logging.basicConfig(
 )
 logger = logging.getLogger("robosteamul_bot")
 
-PROGRAMS: Dict[str, Dict[str, str]] = {
+PROGRAMS: Dict[str, Dict[str, Any]] = {
     "robo_34": {
         "name": "Робототехника «РобоСТЕАМ»",
         "age": "3–4 года",
+        "price": "300 ₽ за занятие",
         "description": "Первое знакомство с инженерией, конструированием и логикой в игровой форме.",
     },
     "brick": {
         "name": "Робототехника «РобоСТЕАМ Брик»",
         "age": "4–5 лет",
+        "price": "300 ₽ за занятие",
         "description": "Конструирование, механизмы, алгоритмы и развитие инженерного мышления.",
     },
     "pro": {
         "name": "Робототехника «РобоСТЕАМ Про»",
         "age": "5–7 лет",
+        "price": "400 ₽ за занятие",
         "description": "Сложные модели, механизмы, программирование и подготовка к соревнованиям.",
     },
     "pro_plus": {
         "name": "Робототехника «РобоСТЕАМ Про+»",
         "age": "7–12 лет",
+        "price": "400 ₽ за занятие",
         "description": "Углублённая робототехника, программирование, инженерные проекты и подготовка к соревнованиям.",
     },
     "dance": {
         "name": "Хореография «СоТворяшки»",
-        "age": "3–8 лет",
+        "age": "3–12 лет",
+        "price": "3–7 лет — 350 ₽; 7–12 лет — 400 ₽ за занятие",
         "description": "Ритм, координация, осанка, сценические постановки и выступления.",
     },
     "logoped": {
         "name": "Логопед и развитие речи",
         "age": "3–7 лет",
+        "price": "занятие — 600 ₽; диагностика — 800 ₽",
         "description": "Диагностика речи, постановка звуков, развитие словаря и связной речи.",
     },
     "school_45": {
-        "name": "Дошколёнок",
+        "name": "Подготовка к школе «Дошколёнок»",
         "age": "4–5 лет",
+        "price": "350 ₽ за занятие",
         "description": "Развитие мышления, речи, внимания, памяти и базовых учебных навыков.",
     },
-    "school_67": {
-        "name": "Дошколёнок",
-        "age": "6–7 лет",
+    "school_57": {
+        "name": "Подготовка к школе «Дошколёнок»",
+        "age": "5–7 лет",
+        "price": "375 ₽ за занятие",
         "description": "Комплексная подготовка ребёнка к школе и формирование уверенности.",
     },
 }
@@ -112,7 +121,9 @@ PROGRAM_ALIASES = {
     "5": "dance", "танцы": "dance", "хореография": "dance",
     "6": "logoped", "логопед": "logoped", "речь": "logoped",
     "7": "school_45", "дошколенок 4-5": "school_45", "дошколёнок 4-5": "school_45",
-    "8": "school_67", "дошколенок 6-7": "school_67", "дошколёнок 6-7": "school_67",
+    "подготовка к школе 4-5": "school_45",
+    "8": "school_57", "дошколенок 5-7": "school_57", "дошколёнок 5-7": "school_57",
+    "подготовка к школе 5-7": "school_57",
 }
 
 
@@ -415,6 +426,39 @@ def vk_send(user_id: int, message: str) -> bool:
         logger.exception("Failed to send VK message: %s", exc)
         return False
 
+def program_price(program_code: str, child_age: Optional[int] = None) -> str:
+    """Return the applicable public price for a program.
+
+    For choreography, age 7 belongs to the 7–12 price tier.
+    """
+    program = PROGRAMS[program_code]
+    if program_code == "dance" and child_age is not None:
+        return "400 ₽ за занятие" if child_age >= 7 else "350 ₽ за занятие"
+    return str(program["price"])
+
+
+def prices_text() -> str:
+    return """💳 Стоимость занятий RoboSTEAMuL
+
+🤖 Робототехника «РобоСТЕАМ», 3–4 года — 300 ₽ за занятие
+🧱 Робототехника «РобоСТЕАМ Брик», 4–5 лет — 300 ₽ за занятие
+⚙️ Робототехника «РобоСТЕАМ Про», 5–7 лет — 400 ₽ за занятие
+🚀 Робототехника «РобоСТЕАМ Про+», 7–12 лет — 400 ₽ за занятие
+
+💃 Хореография:
+• 3–7 лет — 350 ₽ за занятие
+• 7–12 лет — 400 ₽ за занятие
+
+🗣 Логопед — 600 ₽ за занятие
+🔎 Диагностика логопеда — 800 ₽
+
+📚 Подготовка к школе:
+• 4–5 лет — 350 ₽ за занятие
+• 5–7 лет — 375 ₽ за занятие
+
+Расписание и наличие мест подтверждает администратор."""
+
+
 # ---------------------------------------------------------------------------
 # Texts
 # ---------------------------------------------------------------------------
@@ -424,6 +468,7 @@ def main_menu() -> str:
         "Помогу подобрать направление или оформить заявку:\n"
         "• напишите «программы» — узнать о направлениях;\n"
         "• напишите «запись» — записать ребёнка;\n"
+        "• напишите «стоимость» — узнать цены;\n"
         "• напишите «контакты» — связаться с администратором.\n\n"
         "Важно: свободное место и расписание подтверждает администратор."
     )
@@ -466,23 +511,27 @@ def institution_search_text(query: str) -> Optional[str]:
 
 def programs_text() -> str:
     lines = ["Программы RoboSTEAMuL:"]
-    for index, program in enumerate(PROGRAMS.values(), start=1):
-        lines.append(f"{index}. {program['name']} — {program['age']}\n{program['description']}")
-    lines.append("\nДля записи напишите «запись». Стоимость, расписание и свободные места уточнит администратор.")
+    for index, (code, program) in enumerate(PROGRAMS.items(), start=1):
+        lines.append(
+            f"{index}. {program['name']} — {program['age']}\n"
+            f"{program['description']}\n"
+            f"Стоимость: {program_price(code)}"
+        )
+    lines.append("\nДля записи напишите «запись». Расписание и свободные места подтверждает администратор.")
     return "\n\n".join(lines)
 
 
 def program_choices() -> str:
     return (
         "Вопрос 7 из 7. Какое направление вас интересует?\n\n"
-        "1 — Робототехника «РобоСТЕАМ», 3–4 года\n"
-        "2 — Робототехника «РобоСТЕАМ Брик», 4–5 лет\n"
-        "3 — Робототехника «РобоСТЕАМ Про», 5–7 лет\n"
-        "4 — Робототехника «РобоСТЕАМ Про+», 7–12 лет\n"
-        "5 — Хореография, 3–8 лет\n"
-        "6 — Логопед и развитие речи, 3–7 лет\n"
-        "7 — Дошколёнок, 4–5 лет\n"
-        "8 — Дошколёнок, 6–7 лет\n\n"
+        "1 — Робототехника «РобоСТЕАМ», 3–4 года — 300 ₽\n"
+        "2 — Робототехника «РобоСТЕАМ Брик», 4–5 лет — 300 ₽\n"
+        "3 — Робототехника «РобоСТЕАМ Про», 5–7 лет — 400 ₽\n"
+        "4 — Робототехника «РобоСТЕАМ Про+», 7–12 лет — 400 ₽\n"
+        "5 — Хореография, 3–12 лет (3–7 лет — 350 ₽; 7–12 лет — 400 ₽)\n"
+        "6 — Логопед и развитие речи, 3–7 лет (занятие — 600 ₽; диагностика — 800 ₽)\n"
+        "7 — Подготовка к школе «Дошколёнок», 4–5 лет — 350 ₽\n"
+        "8 — Подготовка к школе «Дошколёнок», 5–7 лет — 375 ₽\n\n"
         "Напишите цифру или название направления."
     )
 
@@ -497,7 +546,8 @@ def confirmation_text(session: Dict[str, Any]) -> str:
         f"Группа: {session['group_number']}\n"
         f"Родитель: {session['parent_name']}\n"
         f"Телефон: {session['parent_phone']}\n"
-        f"Направление: {program['name']} ({program['age']})\n\n"
+        f"Направление: {program['name']} ({program['age']})\n"
+        f"Стоимость: {program_price(session['program_code'], int(session['child_age']))}\n\n"
         f"Напишите «да», чтобы отправить заявку администратору {ADMIN_NAME}.\n"
         "Напишите «сначала», чтобы заполнить заново, или «отмена»."
     )
@@ -514,9 +564,10 @@ def admin_application_text(application_id: int, user_id: int, session: Dict[str,
         f"Родитель: {session['parent_name']}\n"
         f"Телефон: {session['parent_phone']}\n"
         f"Направление: {program['name']} ({program['age']})\n"
+        f"Стоимость: {program_price(session['program_code'], int(session['child_age']))}\n"
         f"VK ID: {user_id}\n"
         f"Дата: {datetime.now().strftime('%d.%m.%Y %H:%M')}\n\n"
-        "Нужно связаться с родителем и подтвердить расписание, стоимость и наличие места."
+        "Нужно связаться с родителем и подтвердить расписание и наличие места."
     )
 
 # ---------------------------------------------------------------------------
@@ -625,7 +676,7 @@ def process_registration(user_id: int, text: str, session: Dict[str, Any]) -> No
                 vk_send(
                     user_id,
                     f"✅ Заявка №{application_id} отправлена администратору {ADMIN_NAME}. "
-                    "Администратор свяжется с вами, чтобы подтвердить расписание, стоимость и наличие места.\n\n"
+                    "Администратор свяжется с вами, чтобы подтвердить расписание и наличие места.\n\n"
                     + contacts_text(),
                 )
             else:
@@ -664,6 +715,8 @@ def handle_message(user_id: int, text: str) -> None:
     low = text.lower().replace("ё", "е")
     if any(word in low for word in ("запис", "регистрац", "оставить заявку")):
         start_registration(user_id)
+    elif any(word in low for word in ("стоим", "цен", "сколько стоит", "оплата")):
+        vk_send(user_id, prices_text())
     elif "программ" in low or "направлен" in low or "круж" in low:
         vk_send(user_id, programs_text())
     elif any(word in low for word in ("филиал", "адрес", "детские сады", "детский сад", "школы", "где проходят")):
@@ -685,6 +738,7 @@ def handle_message(user_id: int, text: str) -> None:
             "Напишите:\n"
             "• «программы» — список направлений;\n"
             "• «запись» — оформить заявку;\n"
+            "• «стоимость» — посмотреть цены;\n"
             "• «филиалы» — детские сады и школы;\n"
             "• «контакты» — связаться с администратором.",
         )
@@ -739,7 +793,7 @@ def callback() -> Tuple[str, int]:
 
 @app.get("/")
 def index():
-    return jsonify(status="ok", service="RoboSTEAMuL VK bot", version="3.3")
+    return jsonify(status="ok", service="RoboSTEAMuL VK bot", version="3.4")
 
 
 @app.get("/health")
@@ -765,7 +819,7 @@ def stats():
     with closing(db_connect()) as conn:
         active_sessions = conn.execute("SELECT COUNT(*) FROM sessions WHERE step > 0").fetchone()[0]
         applications = conn.execute("SELECT COUNT(*) FROM applications").fetchone()[0]
-    return jsonify(active_sessions=active_sessions, applications=applications, version="3.3")
+    return jsonify(active_sessions=active_sessions, applications=applications, version="3.4")
 
 
 init_db()
