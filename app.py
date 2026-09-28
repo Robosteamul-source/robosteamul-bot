@@ -33,6 +33,8 @@ app = Flask(__name__)
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
+APP_ENV = os.getenv("APP_ENV", "production").strip().lower()
+IS_STAGING = APP_ENV != "production"
 VK_TOKEN = os.getenv("VK_TOKEN", "").strip()
 VK_SECRET = os.getenv("VK_SECRET", "").strip()
 VK_CONFIRMATION_TOKEN = os.getenv("VK_CONFIRMATION_TOKEN", "").strip()
@@ -758,6 +760,8 @@ def callback_is_valid(data: Dict[str, Any]) -> bool:
 
 @app.post("/callback")
 def callback() -> Tuple[str, int]:
+    if IS_STAGING:
+        return "staging callback disabled", 503
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
         return "ok", 200
@@ -793,7 +797,7 @@ def callback() -> Tuple[str, int]:
 
 @app.get("/")
 def index():
-    return jsonify(status="ok", service="RoboSTEAMuL VK bot", version="3.4")
+    return jsonify(status="ok", service="RoboSTEAMuL VK bot", version="3.4", environment=APP_ENV)
 
 
 @app.get("/health")
@@ -804,9 +808,12 @@ def health():
             conn.execute("SELECT 1").fetchone()
     except sqlite3.Error:
         database_ok = False
-    status_code = 200 if database_ok and bool(VK_TOKEN) else 503
+    token_ok = bool(VK_TOKEN) or IS_STAGING
+    status_code = 200 if database_ok and token_ok else 503
     return jsonify(
         status="healthy" if status_code == 200 else "degraded",
+        environment=APP_ENV,
+        callback_enabled=not IS_STAGING,
         database=database_ok,
         vk_token_configured=bool(VK_TOKEN),
         timestamp=now_iso(),
